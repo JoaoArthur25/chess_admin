@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────
+# Chess Admin — .gitignore (raiz do monorepo)
+# Cobre backend/ e frontend/ e qualquer pacote futuro.
+# ─────────────────────────────────────────────────────────────
+
+# Dependências (reconstruídas com `npm install`)
+node_modules/
+**/node_modules/
+
+# Builds e saídas de compilação
+dist/
+build/
+**/dist/
+**/build/
+
+# Variáveis de ambiente e segredos (versione só o .env.example)
+.env
+.env.*
+!.env.example
+*.local
+
+# Configuração local do Claude Code / ferramentas
+.claude/
+
+# Prisma (artefatos gerados localmente, se houver)
+**/prisma/*.db
+**/prisma/migrations/dev.db*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache de ferramentas
+.cache/
+.vite/
+coverage/
+.eslintcache
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.swp
+
+# Lixo de sistema operacional
+.DS_Store
+Thumbs.db

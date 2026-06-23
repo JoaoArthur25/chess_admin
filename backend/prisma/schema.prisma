@@ -1,0 +1,171 @@
+// Chess Admin — Prisma schema (PostgreSQL).
+// Prisma is pinned to v5 on purpose (see CLAUDE.md guardrail: do NOT auto-bump
+// across majors without testing). The domain here mirrors §4 of CLAUDE.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────
+
+enum TournamentState {
+  DRAFT
+  RUNNING
+  FINISHED
+}
+
+enum RoundStatus {
+  PENDING
+  PAIRED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum PlayerStatus {
+  ACTIVE
+  WITHDRAWN
+  LATE_ENTRY
+  PAUSED
+}
+
+enum Sex {
+  M
+  F
+}
+
+// FIDE title hierarchy (highest precedence first). NONE = untitled.
+enum FideTitle {
+  GM
+  IM
+  WGM
+  FM
+  WIM
+  CM
+  WFM
+  WCM
+  NONE
+}
+
+// Outcome of a single pairing. Normal games use WHITE_WIN/BLACK_WIN/DRAW.
+// Forfeits (W.O.) carry the *_FORFEIT variants. Single-player pairings (byes)
+// use the *_BYE variants where the player sits on the white slot, black = null.
+enum PairingResult {
+  PENDING
+  WHITE_WIN
+  BLACK_WIN
+  DRAW
+  WHITE_WIN_FORFEIT
+  BLACK_WIN_FORFEIT
+  DOUBLE_FORFEIT
+  FULL_POINT_BYE
+  HALF_POINT_BYE
+  ZERO_POINT_BYE
+}
+
+// ── Models ───────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  tournaments  Tournament[]
+}
+
+model Tournament {
+  id             String          @id @default(cuid())
+  name           String
+  date           DateTime        @default(now())
+  numberOfRounds Int
+  currentRound   Int             @default(0)
+  state          TournamentState @default(DRAFT)
+
+  // Ordered list of tie-break system codes (see domain/tiebreaks.ts).
+  tieBreaks      String[]        @default([])
+
+  // Optional acceleration config (e.g. Baku acceleration). Null = none.
+  acceleration   Json?
+
+  // Points awarded for rounds missed by a LATE_ENTRY player (0 or 0.5).
+  lateEntryPoints Float          @default(0)
+
+  ownerId        String?
+  owner          User?           @relation(fields: [ownerId], references: [id])
+
+  players        Player[]
+  rounds         Round[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Player {
+  id            String       @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  fideId        String? // unique identifier for TRF export & duplicate detection
+  fullName      String
+  sex           Sex
+  fideTitle     FideTitle    @default(NONE)
+  federation    String? // 3-letter FIDE country code
+
+  // Rating used to order the field (TPN). Distinct from officialRating, which
+  // is what gets reported to FIDE — they can legitimately differ.
+  pairingRating Int          @default(0)
+  officialRating Int?
+  birthYear     Int?
+
+  status        PlayerStatus @default(ACTIVE)
+
+  // Tournament Pairing Number — initial-ranking order. Assigned when the
+  // tournament leaves DRAFT (rating desc, title, name).
+  startingRank  Int?
+
+  whitePairings Pairing[]    @relation("WhitePlayer")
+  blackPairings Pairing[]    @relation("BlackPlayer")
+
+  createdAt     DateTime     @default(now())
+
+  @@index([tournamentId])
+  @@unique([tournamentId, fideId])
+}
+
+model Round {
+  id           String      @id @default(cuid())
+  tournamentId String
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  index        Int // 1-based round number
+  status       RoundStatus @default(PENDING)
+  pairings     Pairing[]
+  createdAt    DateTime    @default(now())
+
+  @@unique([tournamentId, index])
+  @@index([tournamentId])
+}
+
+model Pairing {
+  id          String        @id @default(cuid())
+  roundId     String
+  round       Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  boardNumber Int
+
+  whiteId     String
+  white       Player        @relation("WhitePlayer", fields: [whiteId], references: [id], onDelete: Cascade)
+
+  // Null = bye / single-player allocation.
+  blackId     String?
+  black       Player?       @relation("BlackPlayer", fields: [blackId], references: [id], onDelete: Cascade)
+
+  result      PairingResult @default(PENDING)
+
+  @@index([roundId])
+  @@index([whiteId])
+  @@index([blackId])
+}
