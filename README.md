@@ -87,20 +87,47 @@ to a non-owner.
 without it rather than falling back to a built-in default. In development a
 random per-process secret is used, so sessions reset when you restart.
 
-## Production: PostgreSQL + the real engine
+## Running with PostgreSQL (data survives restarts)
+
+The in-memory repository loses everything when the process stops — fine for a
+demo, not for a real event. For persistence:
 
 ```bash
-# 1) Point at Postgres and run migrations
-cd backend
-cp .env.example .env          # set DATABASE_URL, REPO=prisma
-npx prisma migrate dev --name init
+docker compose up -d
+```
 
-# 2) Use the real FIDE engine
-#    Build bbpPairings (https://github.com/BieremaBoyzProgramming/bbpPairings)
-#    then set in .env:
-#      PAIRING_ENGINE=bbp
-#      PAIRING_ENGINE_PATH=/absolute/path/to/bbpPairings
-npm run build && npm start
+That starts Postgres 16 on host port **5433** (deliberately not 5432, so it
+cannot collide with another local Postgres) with a named volume, so data
+outlives the container. Then in `backend/.env`:
+
+```
+REPO=prisma
+DATABASE_URL=postgresql://chess:chess@localhost:5433/chess_admin?schema=public
+```
+
+Apply the schema and start:
+
+```bash
+cd backend && npx prisma migrate deploy && npm run dev
+```
+
+Use `migrate dev` instead of `deploy` when you change `schema.prisma` and want a
+new migration generated. On boot the server prints the repository and engine it
+resolved — confirm it says `repository: prisma`.
+
+Stop with `docker compose down` (keeps data) or `docker compose down -v` (wipes
+the volume).
+
+The test suite deliberately runs against the in-memory repository, so it stays
+fast and needs no database.
+
+### The real FIDE engine
+
+Build `bbpPairings` (see below), then in `backend/.env`:
+
+```
+PAIRING_ENGINE=bbp
+PAIRING_ENGINE_PATH=/absolute/path/to/bbpPairings.exe
 ```
 
 The engine is invoked **server-side only**, via `child_process.spawn` + temp
