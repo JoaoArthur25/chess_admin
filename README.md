@@ -108,14 +108,43 @@ files. Exit codes are handled per the contract: `0` success, `1` = no valid
 pairing for the round (a domain condition, surfaced as HTTP 409, not a crash),
 other non-zero = engine error (stderr captured).
 
-## Engine & license action items (from CLAUDE.md §6)
+## Engine & license (CLAUDE.md §6 action items — resolved)
 
-- `bbpPairings` is invoked at **arm's length** as a separate process (not linked),
-  so even a GPL build is "mere aggregation" and does not impose copyleft on this
-  codebase. **Before distributing**, verify `LICENSE.txt` of the exact engine
-  version you ship and document it here.
-- Pin the engine version and verify its CLI flags against its README — the
-  adapter targets the `--dutch ... -p ... [-l ...]` / `-c` forms.
+**License: Apache-2.0.** Verified against `LICENSE.txt` of the built version
+(commit `7dca5c0`, 2026-05-20): *"The source code of BBP Pairings is released
+under the Apache License, Version 2.0."* It is **not** GPL, so the copyleft
+concern raised in CLAUDE.md does not arise at all. We additionally invoke it at
+arm's length (separate process, not linked), so there is no combined work.
+
+**CLI contract: verified against the real binary.** The adapter's
+`--dutch <in> -p <out>` and `-c` forms work as documented, and the `-p` output
+format (`<count>` then `<white> <black>` lines, `0` = bye) parses correctly.
+
+### Building the engine (Windows / MSYS2)
+
+```bash
+pacman -S --needed --noconfirm mingw-w64-x86_64-gcc make git
+cd /c/Trabalhos-Dev && git clone https://github.com/BieremaBoyzProgramming/bbpPairings.git
+cd bbpPairings && make COMP=gcc     # produces bbpPairings.exe
+```
+
+Then set `PAIRING_ENGINE=bbp` and `PAIRING_ENGINE_PATH=<abs path>/bbpPairings.exe`.
+Keep the engine **outside** this repository — it is a separate program with its
+own license, and that separation is what keeps the two works independent.
+
+### Black-box validation (§8)
+
+`tests/realEngine.test.ts` runs full tournaments through the real engine and
+asserts the FIDE invariants on every round: no rematches, colour difference
+within |2|, never the same colour three times running, at most one bye per
+player, everyone paired exactly once per round. It **skips automatically** when
+the binary is absent, so the suite still passes on a machine without it.
+
+One case worth knowing: a small field can legitimately dead-end. With 6 players,
+the not-yet-played graph after 3 rounds can be two disjoint triangles — a
+2-regular graph with no perfect matching, so a 4th round is impossible without a
+rematch. The engine exits 1 and we surface **409**, never a crash. That path is
+covered by a test.
 
 ## Notes / known limitations
 
@@ -124,6 +153,6 @@ other non-zero = engine error (stderr captured).
   documented follow-up; it only affects ordering *within* already-tied groups.
 - `FakePairingEngine` is for dev/tests only. It is intentionally a naive greedy
   Swiss (score-group fold) and may force a rare late rematch — strict
-  no-rematch/colour correctness is the **real** engine's job, to be covered by
-  black-box simulation tests once the binary is wired in.
+  no-rematch/colour correctness is the **real** engine's job, now verified by
+  the black-box simulation tests described above.
 - Prisma is pinned to v5 on purpose. Do not bump across majors without testing.
