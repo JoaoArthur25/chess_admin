@@ -205,6 +205,34 @@ export function createApp(service: TournamentService, auth: AuthService): expres
     }),
   );
 
+  r.put(
+    '/tournaments/:id/rounds/:roundId/pairings',
+    h(async (req, res) => {
+      const { pairings, acknowledgeWarnings } = z
+        .object({
+          pairings: z
+            .array(
+              z.object({
+                whiteId: z.string(),
+                blackId: z.string().nullable(),
+                result: resultEnum.optional(),
+              }),
+            )
+            .min(1),
+          acknowledgeWarnings: z.boolean().optional(),
+        })
+        .parse(req.body);
+      const result = await service.setRoundPairings(
+        req.params.id!,
+        req.params.roundId!,
+        pairings,
+        { acknowledgeWarnings: acknowledgeWarnings ?? false },
+      );
+      // Warnings that were not acknowledged: nothing was written.
+      res.status(result.applied ? 200 : 409).json(result);
+    }),
+  );
+
   r.post(
     '/tournaments/:id/validate-pairing',
     h(async (req, res) => {

@@ -2,11 +2,17 @@
 // final classification — they are NOT used for pairing (the engine handles
 // that). Config is an ordered list of codes per tournament.
 //
-// NOTE on unplayed games: FIDE's modern regulations specify a "virtual
-// opponent" adjustment for byes/forfeits in Buchholz-type tie-breaks. This
-// implementation computes the classic sum-of-opponents'-scores form over the
-// real opponents the player actually faced. The virtual-opponent refinement is
-// a documented follow-up (it affects ordering only within already-tied groups).
+// Unplayed games (byes and forfeits) use FIDE's VIRTUAL OPPONENT rule: a real
+// opponent's score cannot be used because no game took place, so a fictitious
+// opponent is scored as
+//
+//     VO = (player's score before round r) + (1 − points the player got in r)
+//          + 0.5 × (number of rounds after r)
+//
+// i.e. the virtual opponent matches the player up to that round, takes the
+// complementary result, then draws every remaining round. This matters whenever
+// a field has byes or walkovers — without it, players with a bye get an
+// artificially low Buchholz.
 
 import { buildPlayerHistory, scoreFromHistory } from './scoring.js';
 import type { GameRecord, Player, Round } from './types.js';
@@ -42,47 +48,80 @@ interface Context {
   scoreById: Map<string, number>;
   /** playerId -> player (for ratings). */
   playerById: Map<string, Player>;
+  /** Total rounds the event is scheduled for (needed by the virtual opponent). */
+  numberOfRounds: number;
 }
 
-function buildContext(players: Player[], rounds: Round[]): Context {
+function buildContext(
+  players: Player[],
+  rounds: Round[],
+  numberOfRounds: number,
+): Context {
   const scoreById = new Map<string, number>();
   const playerById = new Map<string, Player>();
   for (const p of players) {
     playerById.set(p.id, p);
     scoreById.set(p.id, scoreFromHistory(buildPlayerHistory(p.id, rounds)));
   }
-  return { rounds, scoreById, playerById };
+  return { rounds, scoreById, playerById, numberOfRounds };
 }
 
-function realOpponentScores(history: GameRecord[], ctx: Context): number[] {
-  return history
-    .filter((g) => g.opponentId)
-    .map((g) => ctx.scoreById.get(g.opponentId!) ?? 0);
+/** A game with no real opponent behind it: byes and walkovers. */
+function isUnplayed(g: GameRecord): boolean {
+  return g.bye || g.forfeit;
+}
+
+/**
+ * Score of the fictitious opponent standing in for an unplayed game (FIDE).
+ * Assumes `history` is ordered by round.
+ */
+function virtualOpponentScore(
+  history: GameRecord[],
+  game: GameRecord,
+  numberOfRounds: number,
+): number {
+  const scoreBefore = history
+    .filter((g) => g.roundIndex < game.roundIndex)
+    .reduce((sum, g) => sum + g.points, 0);
+  const roundsAfter = Math.max(0, numberOfRounds - game.roundIndex);
+  return scoreBefore + (1 - game.points) + 0.5 * roundsAfter;
+}
+
+/**
+ * The opponent score to use for each game: the real opponent's total, or the
+ * virtual opponent's score when the game was not played.
+ */
+function opponentScores(history: GameRecord[], ctx: Context): number[] {
+  const ordered = [...history].sort((a, b) => a.roundIndex - b.roundIndex);
+  return ordered.map((g) =>
+    isUnplayed(g) || !g.opponentId
+      ? virtualOpponentScore(ordered, g, ctx.numberOfRounds)
+      : (ctx.scoreById.get(g.opponentId) ?? 0),
+  );
 }
 
 function buchholz(history: GameRecord[], ctx: Context): number {
-  return realOpponentScores(history, ctx).reduce((a, b) => a + b, 0);
+  return opponentScores(history, ctx).reduce((a, b) => a + b, 0);
 }
 
 function buchholzCut1(history: GameRecord[], ctx: Context): number {
-  const scores = realOpponentScores(history, ctx).sort((a, b) => a - b);
+  const scores = opponentScores(history, ctx).sort((a, b) => a - b);
   if (scores.length === 0) return 0;
   return scores.slice(1).reduce((a, b) => a + b, 0); // drop the lowest
 }
 
 function buchholzMedian(history: GameRecord[], ctx: Context): number {
-  const scores = realOpponentScores(history, ctx).sort((a, b) => a - b);
+  const scores = opponentScores(history, ctx).sort((a, b) => a - b);
   if (scores.length <= 2) return 0;
   return scores.slice(1, -1).reduce((a, b) => a + b, 0); // drop lowest & highest
 }
 
 function sonnebornBerger(history: GameRecord[], ctx: Context): number {
-  let sb = 0;
-  for (const g of history) {
-    if (!g.opponentId) continue;
-    sb += (ctx.scoreById.get(g.opponentId) ?? 0) * g.points;
-  }
-  return sb;
+  const ordered = [...history].sort((a, b) => a.roundIndex - b.roundIndex);
+  const scores = opponentScores(ordered, ctx);
+  // Sum of (opponent's score x points scored against them), with unplayed
+  // games contributing via their virtual opponent.
+  return ordered.reduce((sb, g, i) => sb + (scores[i] ?? 0) * g.points, 0);
 }
 
 function progressive(history: GameRecord[]): number {

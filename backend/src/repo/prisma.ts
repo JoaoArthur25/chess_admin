@@ -221,6 +221,22 @@ export class PrismaRepository implements TournamentRepository {
     });
   }
 
+  async replaceRoundPairings(roundId: string, pairings: NewPairing[]): Promise<void> {
+    // One transaction so a round is never left partially paired.
+    await prisma.$transaction([
+      prisma.pairing.deleteMany({ where: { roundId } }),
+      prisma.pairing.createMany({
+        data: pairings.map((p) => ({
+          roundId,
+          boardNumber: p.boardNumber,
+          whiteId: p.whiteId,
+          blackId: p.blackId,
+          result: p.result,
+        })),
+      }),
+    ]);
+  }
+
   async deleteRound(roundId: string): Promise<void> {
     await prisma.round.delete({ where: { id: roundId } });
   }

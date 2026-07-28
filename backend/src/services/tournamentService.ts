@@ -3,6 +3,7 @@ import { NoValidPairingError } from '../engine/port.js';
 import { assignMissingStartingRanks, assignStartingRanks } from '../domain/ranking.js';
 import {
   detectRetroactiveEdit,
+  hasBlockingError,
   validateByeAssignment,
   validateManualPairing,
   type ValidationAlert,
@@ -303,6 +304,104 @@ export class TournamentService {
     }
 
     return { alerts, tournament: await this.load(id) };
+  }
+
+  // ── Manual pairing (§5 guardrails) ───────────────────────────────────────
+
+  /**
+   * Replace a round's pairings with an arbiter-specified list. The engine still
+   * owns automatic pairing — this is the manual override, and every FIDE rule
+   * we can check is enforced here:
+   *  - only a round with no results entered may be re-paired,
+   *  - every player of the round must appear exactly once (no one dropped/dup),
+   *  - rematches and illegal byes are hard errors,
+   *  - colour warnings are returned and require explicit acknowledgement.
+   */
+  async setRoundPairings(
+    id: string,
+    roundId: string,
+    proposed: { whiteId: string; blackId: string | null; result?: PairingResult }[],
+    opts: { acknowledgeWarnings?: boolean } = {},
+  ) {
+    const t = await this.load(id);
+    const round = t.rounds.find((r) => r.id === roundId);
+    if (!round) throw new DomainError('Round not found', 404);
+
+    if (round.pairings.some((p) => isResultEntered(p.result))) {
+      throw new DomainError(
+        'This round already has results; clear them before re-pairing.',
+        409,
+      );
+    }
+
+    // The set of players involved must match the round exactly, so a manual
+    // edit can never silently drop someone or enter them twice.
+    const before = new Set<string>();
+    for (const p of round.pairings) {
+      before.add(p.whiteId);
+      if (p.blackId) before.add(p.blackId);
+    }
+    const after = new Map<string, number>();
+    for (const p of proposed) {
+      after.set(p.whiteId, (after.get(p.whiteId) ?? 0) + 1);
+      if (p.blackId) after.set(p.blackId, (after.get(p.blackId) ?? 0) + 1);
+    }
+    const duplicated = [...after.entries()].filter(([, n]) => n > 1).map(([pid]) => pid);
+    if (duplicated.length > 0) {
+      throw new DomainError(
+        `A player appears more than once in the proposed round: ${duplicated.join(', ')}`,
+      );
+    }
+    const missing = [...before].filter((pid) => !after.has(pid));
+    const extra = [...after.keys()].filter((pid) => !before.has(pid));
+    if (missing.length > 0 || extra.length > 0) {
+      throw new DomainError(
+        'The proposed pairings must involve exactly the same players as the round.',
+      );
+    }
+
+    // Validate against history EXCLUDING this round (a player has not "already
+    // met" someone just because the round being edited says so).
+    const priorRounds = t.rounds.filter((r) => r.index < round.index);
+    const alerts: ValidationAlert[] = [];
+    for (const p of proposed) {
+      if (p.blackId === null) {
+        alerts.push(...validateByeAssignment(p.whiteId, 'FULL_POINT_BYE', priorRounds));
+      } else {
+        alerts.push(...validateManualPairing(p.whiteId, p.blackId, priorRounds));
+      }
+    }
+
+    if (hasBlockingError(alerts)) {
+      throw new DomainError('The proposed pairings break a FIDE rule.', 409, alerts);
+    }
+    if (alerts.length > 0 && !opts.acknowledgeWarnings) {
+      // Warnings are legal but need a human decision — return them unapplied.
+      return { applied: false, alerts, tournament: t };
+    }
+
+    let board = 1;
+    const games = proposed.filter((p) => p.blackId !== null);
+    const byes = proposed.filter((p) => p.blackId === null);
+    const toPersist: NewPairing[] = [
+      ...games.map((p) => ({
+        boardNumber: board++,
+        whiteId: p.whiteId,
+        blackId: p.blackId,
+        result: 'PENDING' as PairingResult,
+      })),
+      ...byes.map((p) => ({
+        boardNumber: board++,
+        whiteId: p.whiteId,
+        blackId: null,
+        result: (p.result && BYE_RESULTS.includes(p.result)
+          ? p.result
+          : 'FULL_POINT_BYE') as PairingResult,
+      })),
+    ];
+
+    await this.repo.replaceRoundPairings(roundId, toPersist);
+    return { applied: true, alerts, tournament: await this.load(id) };
   }
 
   // ── Validation / audit ────────────────────────────────────────────────────

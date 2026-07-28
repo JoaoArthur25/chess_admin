@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, ApiError } from '../api';
 import type { PairingResult, Player, Round, Tournament, ValidationAlert } from '../types';
 import { Card, ErrorNote } from './ui';
+import EditPairings from './EditPairings';
 
 const GAME_OPTIONS: { value: PairingResult; label: string }[] = [
   { value: 'PENDING', label: '— result —' },
@@ -39,6 +40,7 @@ export default function RoundsPanel({
   // Follow the latest round as new ones are generated (useState's initial value
   // would freeze on the round that existed when this panel first mounted).
   const [openRound, setOpenRound] = useState<number>(latestIndex);
+  const [editingRound, setEditingRound] = useState<string | null>(null);
   const [trackedLatest, setTrackedLatest] = useState<number>(latestIndex);
   if (trackedLatest !== latestIndex) {
     setTrackedLatest(latestIndex);
@@ -98,6 +100,15 @@ export default function RoundsPanel({
           onToggle={() => setOpenRound(openRound === r.index ? -1 : r.index)}
           name={name}
           onResult={setResult}
+          tournamentId={t.id}
+          players={t.players}
+          editing={editingRound === r.id}
+          onEdit={() => setEditingRound(r.id)}
+          onCancelEdit={() => setEditingRound(null)}
+          onEdited={async () => {
+            setEditingRound(null);
+            await onChange();
+          }}
         />
       ))}
     </div>
@@ -110,31 +121,64 @@ function RoundBlock({
   onToggle,
   name,
   onResult,
+  tournamentId,
+  players,
+  editing,
+  onEdit,
+  onCancelEdit,
+  onEdited,
 }: {
   round: Round;
   open: boolean;
   onToggle: () => void;
   name: (id: string | null) => string;
   onResult: (pairingId: string, result: PairingResult) => void;
+  tournamentId: string;
+  players: Player[];
+  editing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onEdited: () => Promise<void>;
 }) {
   const games = r.pairings.filter((p) => p.blackId !== null);
   const byes = r.pairings.filter((p) => p.blackId === null);
   const done = r.pairings.filter((p) => p.result !== 'PENDING').length;
+  // Re-pairing is only legal while no result has been entered.
+  const canEdit = done === 0;
 
   return (
     <Card>
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left"
-      >
-        <span className="font-semibold">Round {r.index}</span>
-        <span className="text-xs text-slate-500">
-          {done}/{r.pairings.length} results · {r.status}
-        </span>
-        <span className="ml-auto text-slate-400">{open ? '▾' : '▸'}</span>
-      </button>
+      <div className="w-full flex items-center gap-2 px-4 py-3">
+        <button onClick={onToggle} className="flex items-center gap-2 text-left flex-1">
+          <span className="font-semibold">Round {r.index}</span>
+          <span className="text-xs text-slate-500">
+            {done}/{r.pairings.length} results · {r.status}
+          </span>
+        </button>
+        {open && canEdit && !editing && (
+          <button
+            onClick={onEdit}
+            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+          >
+            Edit pairings
+          </button>
+        )}
+        <button onClick={onToggle} className="text-slate-400" aria-label="Toggle round">
+          {open ? '▾' : '▸'}
+        </button>
+      </div>
 
-      {open && (
+      {open && editing && (
+        <EditPairings
+          tournamentId={tournamentId}
+          round={r}
+          players={players}
+          onDone={onEdited}
+          onCancel={onCancelEdit}
+        />
+      )}
+
+      {open && !editing && (
         <div className="border-t border-slate-100 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-left">

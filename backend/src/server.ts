@@ -1,3 +1,4 @@
+import './loadEnv.js'; // must come first — populates process.env
 import { createApp } from './api/app.js';
 import { createPairingEngine } from './engine/index.js';
 import { createRepository } from './repo/index.js';

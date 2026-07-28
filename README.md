@@ -34,7 +34,7 @@ frontend/   React + Vite + TypeScript + TailwindCSS (responsive-first)
 | 3 | Engine integration: `BbpPairingsEngine` wrapper (child-process + temp files) | ✅ |
 | 4 | Lifecycle: create/register/run/results/next-round, state machine, REST API + UI | ✅ |
 | 5 | Audit & validations: colour history, opponents matrix, bye/colour/rematch alerts | ✅ |
-| 6 | Standings & tie-breaks (Buchholz, BH-1, median, SB, progressive, ARO, wins, DE), public view | ✅ |
+| 6 | Standings & tie-breaks (Buchholz + FIDE virtual opponent, BH-1, median, SB, progressive, ARO, wins, DE), public view | ✅ |
 | 7 | Polish: responsive passes, TRF export, docs; `JaVaFoEngine` adapter (future) | ✅ / future |
 
 ## Running it (no database required)
@@ -146,11 +146,20 @@ the not-yet-played graph after 3 rounds can be two disjoint triangles — a
 rematch. The engine exits 1 and we surface **409**, never a crash. That path is
 covered by a test.
 
-## Notes / known limitations
+## Manual pairing (arbiter override)
 
-- Tie-break Buchholz-family values use the classic sum-of-opponents'-scores form.
-  The FIDE "virtual opponent" adjustment for unplayed games (byes/forfeits) is a
-  documented follow-up; it only affects ordering *within* already-tied groups.
+The engine owns automatic pairing. When an arbiter must override it, open a
+round that has **no results yet** and use *Edit pairings*: choosing a player for
+a slot swaps them with whoever was there, so the round always keeps exactly the
+same players. The backend re-validates every change and
+
+- **refuses** (409) rematches and illegal byes,
+- **refuses** (400) dropping or duplicating a player,
+- **refuses** (409) re-pairing a round that already has results,
+- **returns colour warnings unapplied** (same colour 3× running, colour
+  difference beyond |2|) until the arbiter explicitly confirms.
+
+## Notes / known limitations
 - `FakePairingEngine` is for dev/tests only. It is intentionally a naive greedy
   Swiss (score-group fold) and may force a rare late rematch — strict
   no-rematch/colour correctness is the **real** engine's job, now verified by

@@ -81,6 +81,17 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ result }) },
     ),
 
+  setRoundPairings: (
+    id: string,
+    roundId: string,
+    pairings: { whiteId: string; blackId: string | null }[],
+    acknowledgeWarnings = false,
+  ) =>
+    req<{ applied: boolean; alerts: ValidationAlert[] }>(
+      `/tournaments/${id}/rounds/${roundId}/pairings`,
+      { method: 'PUT', body: JSON.stringify({ pairings, acknowledgeWarnings }) },
+    ),
+
   standings: (id: string) => req<StandingRow[]>(`/tournaments/${id}/standings`),
   matrix: (id: string) => req<{ ranks: number[]; cells: (number | null)[][] }>(`/tournaments/${id}/matrix`),
   trf: (id: string) => req<string>(`/tournaments/${id}/trf`),

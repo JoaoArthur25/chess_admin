@@ -44,7 +44,7 @@ function directEncounter(aId: string, bId: string, rounds: Round[]): number {
 export function computeStandings(t: Tournament): StandingRow[] {
   const codes = t.tieBreaks.filter(isTieBreakCode);
   const ranked = t.players.filter((p) => p.startingRank != null);
-  const ctx = buildContext(ranked, t.rounds);
+  const ctx = buildContext(ranked, t.rounds, t.numberOfRounds);
 
   interface Pre {
     player: Player;

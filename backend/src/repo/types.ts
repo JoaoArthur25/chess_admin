@@ -94,6 +94,8 @@ export interface TournamentRepository extends UserRepository {
   addRound(tournamentId: string, index: number, pairings: NewPairing[]): Promise<Round>;
   /** Append a pairing to an existing round (e.g. a late entry's missed-round bye). */
   addPairing(roundId: string, pairing: NewPairing): Promise<void>;
+  /** Replace all pairings of a round (manual re-pairing by the arbiter). */
+  replaceRoundPairings(roundId: string, pairings: NewPairing[]): Promise<void>;
   deleteRound(roundId: string): Promise<void>;
   setRoundStatus(roundId: string, status: Round['status']): Promise<void>;
   setPairingResult(pairingId: string, result: PairingResult): Promise<void>;
