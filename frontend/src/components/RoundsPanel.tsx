@@ -35,7 +35,15 @@ export default function RoundsPanel({
   }, [t.players]);
 
   const rounds = [...t.rounds].sort((a, b) => b.index - a.index);
-  const [openRound, setOpenRound] = useState<number>(rounds[0]?.index ?? 0);
+  const latestIndex = rounds[0]?.index ?? 0;
+  // Follow the latest round as new ones are generated (useState's initial value
+  // would freeze on the round that existed when this panel first mounted).
+  const [openRound, setOpenRound] = useState<number>(latestIndex);
+  const [trackedLatest, setTrackedLatest] = useState<number>(latestIndex);
+  if (trackedLatest !== latestIndex) {
+    setTrackedLatest(latestIndex);
+    setOpenRound(latestIndex);
+  }
 
   async function setResult(pairingId: string, result: PairingResult) {
     setError(null);

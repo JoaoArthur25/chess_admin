@@ -24,6 +24,12 @@ export default function StandingsPanel({
   const [rows, setRows] = useState<StandingRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Re-fetch whenever any result changes, not just when a round is added —
+  // entering a single result changes points and every tie-break.
+  const resultsKey = tournament.rounds
+    .map((r) => r.pairings.map((p) => p.result).join(''))
+    .join('|');
+
   useEffect(() => {
     let alive = true;
     api
@@ -33,7 +39,7 @@ export default function StandingsPanel({
     return () => {
       alive = false;
     };
-  }, [tournament.id, tournament.rounds.length]);
+  }, [tournament.id, resultsKey]);
 
   if (error) return <ErrorNote message={error} />;
   if (!rows) return <Spinner />;

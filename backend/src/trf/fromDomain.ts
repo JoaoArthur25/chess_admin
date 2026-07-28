@@ -26,11 +26,22 @@ function playerRounds(
   const ordered = [...rounds].sort((a, b) => a.index - b.index);
   const out: TrfRoundResult[] = [];
 
-  for (const round of ordered) {
+  for (const [i, round] of ordered.entries()) {
     const pairing = round.pairings.find(
       (p) => p.whiteId === player.id || p.blackId === player.id,
     );
-    if (!pairing) continue;
+
+    if (!pairing) {
+      // In the round being generated, "no pairing" is the signal that tells the
+      // engine to pair this player — it must stay empty. That is always the last
+      // round in the list (an already-paired round covers every player).
+      if (i === ordered.length - 1) continue;
+      // In an earlier round, "no pairing" means the player was absent (e.g. a
+      // late entry). The slot MUST still be filled: TRF round data is positional,
+      // so skipping it would shift later games into earlier rounds' columns.
+      out.push({ opponent: 0, color: '-', result: 'Z' });
+      continue;
+    }
 
     if (pairing.blackId === null) {
       const code = toTrfCode(pairing.result, true, false);

@@ -107,6 +107,21 @@ describe('tournament lifecycle', () => {
     expect(alerts.some((a) => a.code === 'RETROACTIVE_EDIT')).toBe(true);
   });
 
+  it('reopens a FINISHED tournament when a result is cleared', async () => {
+    const id = await seed(svc, 4, 1);
+    await svc.startTournament(id);
+    await svc.generateNextRound(id);
+    await completeLastRound(svc, id);
+    expect((await svc.getTournament(id)).state).toBe('FINISHED');
+
+    const t = await svc.getTournament(id);
+    const game = t.rounds[0]!.pairings.find((p) => p.blackId !== null)!;
+    await svc.enterResult(id, game.id, 'PENDING');
+
+    const after = await svc.getTournament(id);
+    expect(after.state, 'must not stay FINISHED with an incomplete round').toBe('RUNNING');
+  });
+
   it('rejects an invalid result for a bye pairing', async () => {
     const id = await seed(svc, 5, 3); // odd field -> a bye each round
     await svc.startTournament(id);

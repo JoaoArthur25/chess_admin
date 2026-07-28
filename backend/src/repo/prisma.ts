@@ -189,6 +189,18 @@ export class PrismaRepository implements TournamentRepository {
     };
   }
 
+  async addPairing(roundId: string, pairing: NewPairing): Promise<void> {
+    await prisma.pairing.create({
+      data: {
+        roundId,
+        boardNumber: pairing.boardNumber,
+        whiteId: pairing.whiteId,
+        blackId: pairing.blackId,
+        result: pairing.result,
+      },
+    });
+  }
+
   async deleteRound(roundId: string): Promise<void> {
     await prisma.round.delete({ where: { id: roundId } });
   }

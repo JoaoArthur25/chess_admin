@@ -166,6 +166,11 @@ export class InMemoryRepository implements TournamentRepository {
     return t!.rounds.find((r) => r.id === roundId)!;
   }
 
+  async addPairing(roundId: string, pairing: NewPairing): Promise<void> {
+    const pid = randomUUID();
+    this.pairings.set(pid, { ...pairing, id: pid, roundId });
+  }
+
   async deleteRound(roundId: string): Promise<void> {
     this.rounds.delete(roundId);
     for (const [paid, pa] of this.pairings) if (pa.roundId === roundId) this.pairings.delete(paid);

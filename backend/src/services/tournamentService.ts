@@ -1,6 +1,6 @@
 import type { PairingEngine } from '../engine/port.js';
 import { NoValidPairingError } from '../engine/port.js';
-import { assignStartingRanks } from '../domain/ranking.js';
+import { assignMissingStartingRanks, assignStartingRanks } from '../domain/ranking.js';
 import {
   detectRetroactiveEdit,
   validateByeAssignment,
@@ -102,10 +102,24 @@ export class TournamentService {
     const status = input.status ?? (t.state === 'RUNNING' ? 'LATE_ENTRY' : 'ACTIVE');
     const player = await this.repo.addPlayer(tournamentId, { ...input, status });
 
-    // Keep TPN ranks consistent once the field is ranked (running tournaments).
     if (t.state !== 'DRAFT') {
+      // Append a TPN at the end of the list; never renumber the existing field
+      // (the TPN is fixed at start and the whole history references it).
       const refreshed = await this.load(tournamentId);
-      await this.repo.setStartingRanks(assignStartingRanks(refreshed.players));
+      await this.repo.setStartingRanks(assignMissingStartingRanks(refreshed.players));
+
+      // Record the rounds this player missed, so the history stays complete —
+      // it is the engine's input contract and drives scoring/tie-breaks.
+      const missedResult: PairingResult =
+        t.lateEntryPoints === 0.5 ? 'HALF_POINT_BYE' : 'ZERO_POINT_BYE';
+      for (const round of t.rounds) {
+        await this.repo.addPairing(round.id, {
+          boardNumber: round.pairings.length + 1,
+          whiteId: player.id,
+          blackId: null,
+          result: missedResult,
+        });
+      }
     }
     return player;
   }
@@ -262,8 +276,13 @@ export class TournamentService {
       complete ? 'COMPLETED' : r.pairings.some((p) => isResultEntered(p.result)) ? 'IN_PROGRESS' : 'PAIRED',
     );
 
-    if (isTournamentComplete(await this.load(id))) {
-      await this.repo.setTournamentState(id, 'FINISHED', refreshed.numberOfRounds);
+    const after = await this.load(id);
+    if (isTournamentComplete(after)) {
+      await this.repo.setTournamentState(id, 'FINISHED', after.numberOfRounds);
+    } else if (after.state === 'FINISHED') {
+      // A result was cleared/edited after the event closed — reopen it rather
+      // than leaving a FINISHED tournament with an incomplete round.
+      await this.repo.setTournamentState(id, 'RUNNING', after.rounds.length);
     }
 
     return { alerts, tournament: await this.load(id) };
