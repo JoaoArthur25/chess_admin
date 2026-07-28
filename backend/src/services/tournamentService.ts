@@ -61,6 +61,22 @@ export class TournamentService {
     return t;
   }
 
+  /**
+   * Load a tournament for a mutating operation, enforcing ownership. Returns
+   * 404 (not 403) for someone else's event so the API does not disclose which
+   * tournament ids exist to a non-owner.
+   */
+  private async loadOwned(id: string, userId: string): Promise<Tournament> {
+    const t = await this.load(id);
+    if (t.ownerId !== userId) throw new DomainError('Tournament not found', 404);
+    return t;
+  }
+
+  /** Assert the caller owns this tournament; used before any write. */
+  async assertOwner(id: string, userId: string): Promise<Tournament> {
+    return this.loadOwned(id, userId);
+  }
+
   // ── CRUD ────────────────────────────────────────────────────────────────
 
   createTournament(input: CreateTournamentInput) {
@@ -68,8 +84,9 @@ export class TournamentService {
     return this.repo.createTournament(input);
   }
 
-  listTournaments() {
-    return this.repo.listTournaments();
+  /** Without an ownerId this returns every event — always scope it by caller. */
+  listTournaments(ownerId?: string) {
+    return this.repo.listTournaments(ownerId);
   }
 
   getTournament(id: string) {

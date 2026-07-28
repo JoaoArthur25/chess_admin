@@ -3,10 +3,12 @@ import type { Player, Round, Tournament } from '../domain/types.js';
 import type {
   CreatePlayerInput,
   CreateTournamentInput,
+  CreateUserInput,
   NewPairing,
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
+  UserRecord,
 } from './types.js';
 
 // In-memory repository — used for the dev server (no DB required) and tests.
@@ -25,15 +27,33 @@ interface StoredRound {
 }
 
 export class InMemoryRepository implements TournamentRepository {
+  private users = new Map<string, UserRecord>();
   private tournaments = new Map<string, Tournament>();
   private players = new Map<string, Player & { tournamentId: string }>();
   private rounds = new Map<string, StoredRound>();
   private pairings = new Map<string, StoredPairing>();
 
+  async createUser(input: CreateUserInput): Promise<UserRecord> {
+    const id = randomUUID();
+    const user: UserRecord = { id, ...input };
+    this.users.set(id, user);
+    return user;
+  }
+
+  async findUserByEmail(email: string): Promise<UserRecord | null> {
+    const needle = email.toLowerCase();
+    return [...this.users.values()].find((u) => u.email.toLowerCase() === needle) ?? null;
+  }
+
+  async findUserById(id: string): Promise<UserRecord | null> {
+    return this.users.get(id) ?? null;
+  }
+
   async createTournament(input: CreateTournamentInput): Promise<Tournament> {
     const id = randomUUID();
     const t: Tournament = {
       id,
+      ownerId: input.ownerId ?? null,
       name: input.name,
       date: input.date ?? new Date(),
       numberOfRounds: input.numberOfRounds,
@@ -48,16 +68,18 @@ export class InMemoryRepository implements TournamentRepository {
     return this.getTournament(id) as Promise<Tournament>;
   }
 
-  async listTournaments(): Promise<TournamentSummary[]> {
-    return [...this.tournaments.values()].map((t) => ({
-      id: t.id,
-      name: t.name,
-      date: t.date,
-      numberOfRounds: t.numberOfRounds,
-      currentRound: t.currentRound,
-      state: t.state,
-      playerCount: [...this.players.values()].filter((p) => p.tournamentId === t.id).length,
-    }));
+  async listTournaments(ownerId?: string): Promise<TournamentSummary[]> {
+    return [...this.tournaments.values()]
+      .filter((t) => ownerId === undefined || t.ownerId === ownerId)
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        date: t.date,
+        numberOfRounds: t.numberOfRounds,
+        currentRound: t.currentRound,
+        state: t.state,
+        playerCount: [...this.players.values()].filter((p) => p.tournamentId === t.id).length,
+      }));
   }
 
   async getTournament(id: string): Promise<Tournament | null> {

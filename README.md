@@ -29,7 +29,7 @@ frontend/   React + Vite + TypeScript + TailwindCSS (responsive-first)
 
 | Phase | Scope | Status |
 |------|-------|--------|
-| 1 | Foundation: schema, domain model, `PairingEngine` port + `FakePairingEngine` | ✅ |
+| 1 | Foundation: schema, domain model, `PairingEngine` port + `FakePairingEngine`, auth | ✅ |
 | 2 | TRF(x) module: serializer + deserializer, round-trip tests | ✅ |
 | 3 | Engine integration: `BbpPairingsEngine` wrapper (child-process + temp files) | ✅ |
 | 4 | Lifecycle: create/register/run/results/next-round, state machine, REST API + UI | ✅ |
@@ -67,6 +67,25 @@ cd backend && npm test        # 37 tests: TRF round-trip, fake engine, rules,
 cd backend && npm run typecheck
 cd frontend && npm run typecheck
 ```
+
+## Accounts & permissions
+
+Arbiters register at the login screen (e-mail + password, min 8 chars). Passwords
+are hashed with scrypt; session tokens are HMAC-SHA256 signed with a fixed
+algorithm (no JWT header parsing, so algorithm-confusion attacks don't apply).
+
+| Area | Who |
+|------|-----|
+| Standings, pairings, matrix, TRF export (read) | **Anyone** — no account, so players/spectators can check from a phone |
+| Creating/running tournaments, entering results | The **owning arbiter** only |
+
+A tournament belongs to the arbiter who created it. Requests for someone else's
+event return **404** rather than 403, so the API never confirms which ids exist
+to a non-owner.
+
+**`AUTH_SECRET` is mandatory in production** — the server refuses to start
+without it rather than falling back to a built-in default. In development a
+random per-process secret is used, so sessions reset when you restart.
 
 ## Production: PostgreSQL + the real engine
 

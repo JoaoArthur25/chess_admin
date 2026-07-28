@@ -12,10 +12,12 @@ import { prisma } from '../db/prisma.js';
 import type {
   CreatePlayerInput,
   CreateTournamentInput,
+  CreateUserInput,
   NewPairing,
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
+  UserRecord,
 } from './types.js';
 
 // Prisma-backed adapter (production). The DB enums are string-identical to the
@@ -40,6 +42,21 @@ function mapPlayer(p: PrismaPlayer): Player {
 }
 
 export class PrismaRepository implements TournamentRepository {
+  async createUser(input: CreateUserInput): Promise<UserRecord> {
+    const u = await prisma.user.create({ data: input });
+    return { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash };
+  }
+
+  async findUserByEmail(email: string): Promise<UserRecord | null> {
+    const u = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    return u ? { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash } : null;
+  }
+
+  async findUserById(id: string): Promise<UserRecord | null> {
+    const u = await prisma.user.findUnique({ where: { id } });
+    return u ? { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash } : null;
+  }
+
   async createTournament(input: CreateTournamentInput): Promise<Tournament> {
     const t = await prisma.tournament.create({
       data: {
@@ -48,13 +65,15 @@ export class PrismaRepository implements TournamentRepository {
         numberOfRounds: input.numberOfRounds,
         tieBreaks: input.tieBreaks ?? [],
         lateEntryPoints: input.lateEntryPoints ?? 0,
+        ownerId: input.ownerId ?? null,
       },
     });
     return (await this.getTournament(t.id))!;
   }
 
-  async listTournaments(): Promise<TournamentSummary[]> {
+  async listTournaments(ownerId?: string): Promise<TournamentSummary[]> {
     const ts = await prisma.tournament.findMany({
+      where: ownerId === undefined ? undefined : { ownerId },
       include: { _count: { select: { players: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -80,6 +99,7 @@ export class PrismaRepository implements TournamentRepository {
     if (!t) return null;
     return {
       id: t.id,
+      ownerId: t.ownerId,
       name: t.name,
       date: t.date,
       numberOfRounds: t.numberOfRounds,

@@ -29,6 +29,26 @@ export interface CreateTournamentInput {
   numberOfRounds: number;
   tieBreaks?: string[];
   lateEntryPoints?: number;
+  ownerId?: string | null;
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+}
+
+export interface CreateUserInput {
+  email: string;
+  name: string;
+  passwordHash: string;
+}
+
+export interface UserRepository {
+  createUser(input: CreateUserInput): Promise<UserRecord>;
+  findUserByEmail(email: string): Promise<UserRecord | null>;
+  findUserById(id: string): Promise<UserRecord | null>;
 }
 
 export interface CreatePlayerInput {
@@ -53,9 +73,10 @@ export interface NewPairing {
   result: PairingResult;
 }
 
-export interface TournamentRepository {
+export interface TournamentRepository extends UserRepository {
   createTournament(input: CreateTournamentInput): Promise<Tournament>;
-  listTournaments(): Promise<TournamentSummary[]>;
+  /** List tournaments; when ownerId is given, only that owner's events. */
+  listTournaments(ownerId?: string): Promise<TournamentSummary[]>;
   getTournament(id: string): Promise<Tournament | null>;
   updateTournament(
     id: string,

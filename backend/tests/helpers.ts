@@ -46,6 +46,7 @@ export function makeRound(index: number, pairings: Pairing[]): Round {
 export function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
     id: overrides.id ?? 't1',
+    ownerId: overrides.ownerId ?? null,
     name: overrides.name ?? 'Test Open',
     date: overrides.date ?? new Date('2026-02-01T00:00:00Z'),
     numberOfRounds: overrides.numberOfRounds ?? 5,

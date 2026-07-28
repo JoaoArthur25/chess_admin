@@ -71,6 +71,8 @@ export interface Round {
 
 export interface Tournament {
   id: string;
+  /** Arbiter who owns this event. Null for legacy/unowned data. */
+  ownerId: string | null;
   name: string;
   date: Date;
   numberOfRounds: number;

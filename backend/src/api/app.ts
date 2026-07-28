@@ -1,6 +1,8 @@
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { requireAuth } from '../auth/middleware.js';
+import { AuthError, type AuthService } from '../services/authService.js';
 import { DomainError, StateError, TournamentService } from '../services/tournamentService.js';
 
 const titleEnum = z.enum(['GM', 'IM', 'WGM', 'FM', 'WIM', 'CM', 'WFM', 'WCM', 'NONE']);
@@ -38,6 +40,17 @@ const playerSchema = z.object({
   status: statusEnum.optional(),
 });
 
+const registerSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  password: z.string().min(8),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
 /** Wrap async handlers so rejections reach the error middleware. */
 function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -45,7 +58,7 @@ function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   };
 }
 
-export function createApp(service: TournamentService): express.Express {
+export function createApp(service: TournamentService, auth: AuthService): express.Express {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -54,22 +67,79 @@ export function createApp(service: TournamentService): express.Express {
 
   r.get('/health', (_req, res) => res.json({ ok: true }));
 
+  // ── Auth ────────────────────────────────────────────────────────────────
+
+  r.post(
+    '/auth/register',
+    h(async (req, res) => {
+      const { email, name, password } = registerSchema.parse(req.body);
+      res.status(201).json(await auth.register(email, name, password));
+    }),
+  );
+
+  r.post(
+    '/auth/login',
+    h(async (req, res) => {
+      const { email, password } = loginSchema.parse(req.body);
+      res.json(await auth.login(email, password));
+    }),
+  );
+
+  r.get(
+    '/auth/me',
+    requireAuth,
+    h(async (req, res) => res.json(await auth.me(req.userId!))),
+  );
+
+  // ── Public read-only (spectators/players need no account) ────────────────
+
+  r.get(
+    '/tournaments/:id',
+    h(async (req, res) => res.json(await service.getTournament(req.params.id!))),
+  );
+
+  r.get(
+    '/tournaments/:id/standings',
+    h(async (req, res) => res.json(await service.getStandings(req.params.id!))),
+  );
+
+  r.get(
+    '/tournaments/:id/matrix',
+    h(async (req, res) => res.json(await service.getMatrix(req.params.id!))),
+  );
+
+  r.get(
+    '/tournaments/:id/trf',
+    h(async (req, res) => {
+      res.type('text/plain').send(await service.exportTrf(req.params.id!));
+    }),
+  );
+
+  // ── Arbiter-only ────────────────────────────────────────────────────────
+  // Everything below requires a session; routes carrying :id additionally
+  // verify ownership via assertOwner (which 404s for a non-owner).
+
+  r.use(requireAuth);
+
+  /** Guard every mutating :id route in one place — no route can forget it. */
+  r.use('/tournaments/:id', (req, _res, next) => {
+    service
+      .assertOwner(req.params.id!, req.userId!)
+      .then(() => next())
+      .catch(next);
+  });
+
   r.post(
     '/tournaments',
     h(async (req, res) => {
       const input = createTournamentSchema.parse(req.body);
-      res.status(201).json(await service.createTournament(input));
+      res.status(201).json(await service.createTournament({ ...input, ownerId: req.userId! }));
     }),
   );
 
   r.get(
     '/tournaments',
-    h(async (_req, res) => res.json(await service.listTournaments())),
-  );
-
-  r.get(
-    '/tournaments/:id',
-    h(async (req, res) => res.json(await service.getTournament(req.params.id!))),
+    h(async (req, res) => res.json(await service.listTournaments(req.userId!))),
   );
 
   r.patch(
@@ -146,23 +216,6 @@ export function createApp(service: TournamentService): express.Express {
   );
 
   r.get(
-    '/tournaments/:id/standings',
-    h(async (req, res) => res.json(await service.getStandings(req.params.id!))),
-  );
-
-  r.get(
-    '/tournaments/:id/matrix',
-    h(async (req, res) => res.json(await service.getMatrix(req.params.id!))),
-  );
-
-  r.get(
-    '/tournaments/:id/trf',
-    h(async (req, res) => {
-      res.type('text/plain').send(await service.exportTrf(req.params.id!));
-    }),
-  );
-
-  r.get(
     '/tournaments/:id/check',
     h(async (req, res) => res.json(await service.checkTournament(req.params.id!))),
   );
@@ -173,6 +226,9 @@ export function createApp(service: TournamentService): express.Express {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'ValidationError', issues: err.issues });
+    }
+    if (err instanceof AuthError) {
+      return res.status(err.status).json({ error: err.message });
     }
     if (err instanceof DomainError) {
       return res.status(err.status).json({ error: err.message, alerts: err.alerts });
