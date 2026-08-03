@@ -48,7 +48,7 @@ cd backend
 npm install
 npm run dev            # REPO=memory PAIRING_ENGINE=fake by default
 
-# Terminal 2 — frontend (http://localhost:5173, proxies /api to the backend)
+# Terminal 2 — frontend (http://localhost:5183, proxies /api to the backend)
 cd frontend
 npm install
 npm run dev
@@ -59,14 +59,21 @@ Tournament Pairing Numbers), then **Generate round 1**, enter results, and
 generate subsequent rounds. The public read-only standings live at
 `/public/:id`.
 
+The frontend port is pinned (`strictPort`) so it never silently moves to
+another one.
+
 ### Tests & typecheck
 
 ```bash
-cd backend && npm test        # 37 tests: TRF round-trip, fake engine, rules,
-                              # state machine, tie-breaks, full lifecycle
+cd backend && npm test        # 72 tests: TRF round-trip, engine adapters, rules,
+                              # state machine, tie-breaks, auth, lifecycle
 cd backend && npm run typecheck
 cd frontend && npm run typecheck
 ```
+
+Tests run against the in-memory repository on purpose, so they stay fast and
+need no database. The black-box tests against the real engine skip themselves
+when the binary is absent.
 
 ## Accounts & permissions
 
@@ -86,6 +93,25 @@ to a non-owner.
 **`AUTH_SECRET` is mandatory in production** — the server refuses to start
 without it rather than falling back to a built-in default. In development a
 random per-process secret is used, so sessions reset when you restart.
+
+### Configuration
+
+Copy `backend/.env.example` to `backend/.env` and fill it in. Generate a secret
+with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+The file is read by `src/loadEnv.ts`, imported first in the entrypoint. On boot
+the server prints the repository and engine it resolved — **check that line**,
+because a `.env` that is present but not being read is easy to miss:
+
+```
+Chess Admin API listening on http://localhost:4000
+  repository: prisma
+  engine:     bbp
+```
 
 ## Running with PostgreSQL (data survives restarts)
 
@@ -118,8 +144,13 @@ resolved — confirm it says `repository: prisma`.
 Stop with `docker compose down` (keeps data) or `docker compose down -v` (wipes
 the volume).
 
-The test suite deliberately runs against the in-memory repository, so it stays
-fast and needs no database.
+Optionally seed a demo arbiter and tournament:
+
+```bash
+cd backend && npm run seed
+```
+
+That prints the credentials to sign in with (`demo@chess-admin.local`).
 
 ### The real FIDE engine
 
@@ -135,13 +166,13 @@ files. Exit codes are handled per the contract: `0` success, `1` = no valid
 pairing for the round (a domain condition, surfaced as HTTP 409, not a crash),
 other non-zero = engine error (stderr captured).
 
-## Engine & license (CLAUDE.md §6 action items — resolved)
+## Engine & license
 
 **License: Apache-2.0.** Verified against `LICENSE.txt` of the built version
 (commit `7dca5c0`, 2026-05-20): *"The source code of BBP Pairings is released
-under the Apache License, Version 2.0."* It is **not** GPL, so the copyleft
-concern raised in CLAUDE.md does not arise at all. We additionally invoke it at
-arm's length (separate process, not linked), so there is no combined work.
+under the Apache License, Version 2.0."* It is **not** GPL, so no copyleft
+obligation reaches this codebase. We additionally invoke it at arm's length
+(separate process, not linked), so there is no combined work.
 
 **CLI contract: verified against the real binary.** The adapter's
 `--dutch <in> -p <out>` and `-c` forms work as documented, and the `-p` output
@@ -159,7 +190,7 @@ Then set `PAIRING_ENGINE=bbp` and `PAIRING_ENGINE_PATH=<abs path>/bbpPairings.ex
 Keep the engine **outside** this repository — it is a separate program with its
 own license, and that separation is what keeps the two works independent.
 
-### Black-box validation (§8)
+### Black-box validation
 
 `tests/realEngine.test.ts` runs full tournaments through the real engine and
 asserts the FIDE invariants on every round: no rematches, colour difference
@@ -186,9 +217,31 @@ same players. The backend re-validates every change and
 - **returns colour warnings unapplied** (same colour 3× running, colour
   difference beyond |2|) until the arbiter explicitly confirms.
 
-## Notes / known limitations
+## Known limitations
+
+Documented honestly — none of these compromise the architecture, but they matter
+before running an officially rated event.
+
+- **The local engine build is not an official release.** It is compiled from
+  source and identifies itself as a *non-release build*. For a rated tournament,
+  pin a published release of bbpPairings.
+- **TRF export has not been read by a third-party tool.** It is validated
+  against the pairing engine, which is strong, but not against Swiss-Manager or
+  Vega, nor against official FIDE sample tournaments; the exact edition (TRF16
+  vs TRF25) is not formally confirmed. This is the largest conformance gap.
+- **The Prisma adapter has no automated tests.** It has been exercised end to
+  end by hand, but the queries themselves lack integration tests.
+- **Simulation scale is modest.** The black-box tests cover dozens of
+  tournaments; FIDE's endorsement process uses thousands. The harness is in
+  place to scale up.
+- **Sessions cannot be revoked.** Tokens last 12 hours and sign-out is
+  client-side only — there is no revocation list or silent refresh.
+- **Manual pairing is swap-only.** The arbiter can rearrange players across
+  boards but cannot yet assign a bye by hand or flip colours directly.
+- **Acceleration is unused.** The serializer supports `XXA` lines and the schema
+  reserves a field, but nothing drives it (only relevant for large events).
+- **No production infrastructure.** No CI/CD, hosting, HTTPS or backup routine.
 - `FakePairingEngine` is for dev/tests only. It is intentionally a naive greedy
   Swiss (score-group fold) and may force a rare late rematch — strict
-  no-rematch/colour correctness is the **real** engine's job, now verified by
-  the black-box simulation tests described above.
+  no-rematch/colour correctness is the **real** engine's job.
 - Prisma is pinned to v5 on purpose. Do not bump across majors without testing.
