@@ -65,8 +65,8 @@ another one.
 ### Tests & typecheck
 
 ```bash
-cd backend && npm test        # 72 tests: TRF round-trip, engine adapters, rules,
-                              # state machine, tie-breaks, auth, lifecycle
+cd backend && npm test        # 100 tests: TRF round-trip, engine adapters, rules,
+                              # state machine, tie-breaks, auth, sessions, lifecycle
 cd backend && npm run typecheck
 cd frontend && npm run typecheck
 ```
@@ -74,6 +74,36 @@ cd frontend && npm run typecheck
 Tests run against the in-memory repository on purpose, so they stay fast and
 need no database. The black-box tests against the real engine skip themselves
 when the binary is absent.
+
+## Security
+
+**Sessions.** A short-lived access token lives **only in the page's memory** —
+never `localStorage` or `sessionStorage`, so an injected script has nothing to
+read. The long-lived refresh token is an **httpOnly cookie** (`Secure` in
+production, `SameSite=Lax`, scoped to `/api/auth`), invisible to JavaScript. It
+is **rotated on every use**; replaying a rotated token is refused, and if the
+replay arrives long after the rotation — no longer explainable as two tabs
+racing — every session for that account is revoked. Logout revokes server-side,
+so the old cookie is dead.
+
+Reloading the page restores the session from the cookie, so an F5 does not sign
+you out.
+
+**Hardening.** `helmet` sets CSP, HSTS, `nosniff`, frame and referrer policies.
+CORS names exact origins (`CORS_ORIGIN`) with credentials. Credential routes —
+login, register, forgot and reset password — are rate limited to 20 attempts per
+15 minutes per IP. Expired tokens are swept hourly.
+
+**Production refuses to boot** without `AUTH_SECRET`, `CORS_ORIGIN`, `APP_URL`,
+`SMTP_HOST` (and `DATABASE_URL` when using Prisma). Starting in a weakened state
+is worse than not starting.
+
+Set `TRUST_PROXY=true` behind a reverse proxy, or the rate limiter sees the
+proxy's IP for everyone. Set `ALLOW_REGISTRATION=false` to close sign-up once the
+club's accounts exist.
+
+> Upgrading from an older deployment signs everyone out once — sessions moved
+> from `localStorage` to cookies. The old key is cleared automatically on load.
 
 ## Accounts & permissions
 
@@ -315,11 +345,11 @@ before running an officially rated event.
 - **Simulation scale is modest.** The black-box tests cover dozens of
   tournaments; FIDE's endorsement process uses thousands. The harness is in
   place to scale up.
-- **Sessions are only revoked by a password change.** Tokens last 12 hours and
-  sign-out is client-side; a password reset invalidates earlier sessions, but
-  there is no general revocation list or silent refresh.
-- **No rate limiting.** Nothing throttles repeated sign-in or password-reset
-  attempts, which matters once the app is reachable from the internet.
+- **Rate limiting is per-process and in-memory.** It resets on restart and is
+  not shared across instances; a horizontally scaled deployment needs a shared
+  store (Redis) for the limiter to mean anything.
+- **No audit log.** Sign-ins, password changes and tournament edits are not
+  recorded, so there is no trail if a result is disputed.
 - **Manual pairing is swap-only.** The arbiter can rearrange players across
   boards but cannot yet assign a bye by hand or flip colours directly.
 - **The rating report has never been through a real submission.** The header

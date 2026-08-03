@@ -1,7 +1,19 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { z } from 'zod';
 import { makeRequireAuth } from '../auth/middleware.js';
+import {
+  allowedOrigins,
+  cookieName,
+  cookiePath,
+  isProduction,
+  refreshTokenTtlDays,
+  registrationOpen,
+  trustProxy,
+} from '../config.js';
 import { AuthError, type AuthService } from '../services/authService.js';
 import { DomainError, StateError, TournamentService } from '../services/tournamentService.js';
 
@@ -77,10 +89,51 @@ function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   };
 }
 
+/** Put the refresh token in a cookie the browser cannot read. */
+function setRefreshCookie(res: Response, token: string): void {
+  res.cookie(cookieName, token, {
+    httpOnly: true, // invisible to JavaScript, so XSS cannot steal it
+    secure: isProduction, // HTTPS only in production
+    sameSite: 'lax', // blocks cross-site POSTs — our CSRF defence
+    path: cookiePath, // never sent to any route but /api/auth
+    maxAge: refreshTokenTtlDays * 24 * 60 * 60 * 1000,
+  });
+}
+
+function clearRefreshCookie(res: Response): void {
+  res.clearCookie(cookieName, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax',
+    path: cookiePath,
+  });
+}
+
 export function createApp(service: TournamentService, auth: AuthService): express.Express {
   const app = express();
-  app.use(cors());
-  app.use(express.json());
+
+  // Behind a reverse proxy, without this every client looks like the proxy and
+  // the rate limiter would throttle all users as one.
+  if (trustProxy) app.set('trust proxy', 1);
+
+  app.use(helmet());
+  app.use(
+    cors({
+      origin: allowedOrigins(),
+      credentials: true, // required for the refresh cookie to travel
+    }),
+  );
+  app.use(express.json({ limit: '1mb' }));
+  app.use(cookieParser());
+
+  // Credential endpoints are the ones worth brute-forcing.
+  const credentialLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many attempts. Try again in a few minutes.' },
+  });
 
   const requireAuth = makeRequireAuth(auth);
   const r = express.Router();
@@ -91,22 +144,64 @@ export function createApp(service: TournamentService, auth: AuthService): expres
 
   r.post(
     '/auth/register',
+    credentialLimiter,
     h(async (req, res) => {
+      if (!registrationOpen) {
+        res.status(403).json({ error: 'Registration is closed on this server.' });
+        return;
+      }
       const { email, name, password } = registerSchema.parse(req.body);
-      res.status(201).json(await auth.register(email, name, password));
+      const result = await auth.register(email, name, password);
+      setRefreshCookie(res, result.refreshToken);
+      // The refresh token goes out ONLY in the Set-Cookie header.
+      res.status(201).json({ accessToken: result.accessToken, user: result.user });
     }),
   );
 
   r.post(
     '/auth/login',
+    credentialLimiter,
     h(async (req, res) => {
       const { email, password } = loginSchema.parse(req.body);
-      res.json(await auth.login(email, password));
+      const result = await auth.login(email, password);
+      setRefreshCookie(res, result.refreshToken);
+      res.json({ accessToken: result.accessToken, user: result.user });
+    }),
+  );
+
+  // Restores a session after a page reload, and rotates the refresh token.
+  r.post(
+    '/auth/refresh',
+    h(async (req, res) => {
+      const token = (req.cookies?.[cookieName] as string | undefined) ?? '';
+      if (!token) {
+        res.status(401).json({ error: 'No session' });
+        return;
+      }
+      try {
+        const result = await auth.refreshSession(token);
+        setRefreshCookie(res, result.refreshToken);
+        res.json({ accessToken: result.accessToken, user: result.user });
+      } catch {
+        clearRefreshCookie(res);
+        res.status(401).json({ error: 'Session expired' });
+      }
+    }),
+  );
+
+  r.post(
+    '/auth/logout',
+    h(async (req, res) => {
+      const token = (req.cookies?.[cookieName] as string | undefined) ?? '';
+      if (token) await auth.revokeSession(token);
+      clearRefreshCookie(res);
+      res.status(204).end();
     }),
   );
 
   r.post(
     '/auth/forgot-password',
+    credentialLimiter,
     h(async (req, res) => {
       const { email } = forgotSchema.parse(req.body);
       await auth.requestPasswordReset(email);
@@ -120,6 +215,7 @@ export function createApp(service: TournamentService, auth: AuthService): expres
 
   r.post(
     '/auth/reset-password',
+    credentialLimiter,
     h(async (req, res) => {
       const { token, password } = resetSchema.parse(req.body);
       await auth.resetPassword(token, password);

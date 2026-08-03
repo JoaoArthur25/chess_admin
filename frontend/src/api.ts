@@ -1,4 +1,4 @@
-import { getToken } from './auth';
+import { getAccessToken, notifySessionLost, refreshAccessToken } from './auth';
 import type {
   ReportReadiness,
   PairingResult,
@@ -22,16 +22,32 @@ class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-  const res = await fetch(BASE + path, {
+function send(path: string, init: RequestInit | undefined, token: string | null) {
+  return fetch(BASE + path, {
     ...init,
+    credentials: 'include', // the refresh cookie must travel with the request
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  let res = await send(path, init, getAccessToken());
+
+  // The access token is short-lived; on 401 try exactly one refresh and replay.
+  // refreshAccessToken() de-duplicates concurrent attempts, so a burst of
+  // parallel requests causes a single round trip.
+  if (res.status === 401) {
+    const fresh = await refreshAccessToken();
+    if (fresh) {
+      res = await send(path, init, fresh);
+    } else {
+      notifySessionLost();
+    }
+  }
   if (!res.ok) {
     let body: unknown;
     try {

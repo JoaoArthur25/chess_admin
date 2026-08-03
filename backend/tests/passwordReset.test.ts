@@ -64,7 +64,7 @@ async function registerArbiter(): Promise<string> {
     method: 'POST',
     body: { email: EMAIL, name: 'Arbiter', password: OLD_PASSWORD },
   });
-  return res.body.token as string;
+  return res.body.accessToken as string;
 }
 
 /** The token embedded in the most recent reset e-mail. */
@@ -208,6 +208,6 @@ describe('password reset — session invalidation', () => {
       method: 'POST',
       body: { email: EMAIL, password: NEW_PASSWORD },
     });
-    expect((await api('/auth/me', { token: fresh.body.token })).status).toBe(200);
+    expect((await api('/auth/me', { token: fresh.body.accessToken })).status).toBe(200);
   });
 });

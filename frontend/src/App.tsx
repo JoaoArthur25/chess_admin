@@ -36,7 +36,7 @@ function Header() {
         {user ? (
           <div className="ml-auto flex items-center gap-3 text-sm">
             <span className="text-slate-300 hidden sm:inline">{user.name}</span>
-            <button onClick={logout} className="text-slate-300 hover:text-white underline">
+            <button onClick={() => void logout()} className="text-slate-300 hover:text-white underline">
               Sign out
             </button>
           </div>

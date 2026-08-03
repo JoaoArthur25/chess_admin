@@ -5,6 +5,7 @@ import type {
   CreateTournamentInput,
   CreateUserInput,
   NewPairing,
+  RefreshTokenRecord,
   ResetTokenRecord,
   TournamentRepository,
   TournamentSummary,
@@ -32,6 +33,8 @@ export class InMemoryRepository implements TournamentRepository {
   private users = new Map<string, UserRecord>();
   /** keyed by token HASH — the plaintext is never stored */
   private resetTokens = new Map<string, ResetTokenRecord>();
+  /** keyed by token HASH — the plaintext lives only in the browser cookie */
+  private refreshTokens = new Map<string, RefreshTokenRecord>();
   private tournaments = new Map<string, Tournament>();
   private players = new Map<string, Player & { tournamentId: string }>();
   private rounds = new Map<string, StoredRound>();
@@ -75,6 +78,48 @@ export class InMemoryRepository implements TournamentRepository {
     for (const [hash, rec] of this.resetTokens) {
       if (rec.userId === userId && rec.usedAt === null) this.resetTokens.delete(hash);
     }
+  }
+
+  async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    this.refreshTokens.set(tokenHash, {
+      id: randomUUID(),
+      userId,
+      expiresAt,
+      revokedAt: null,
+    });
+  }
+
+  async findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
+    return this.refreshTokens.get(tokenHash) ?? null;
+  }
+
+  async revokeRefreshToken(id: string): Promise<void> {
+    for (const rec of this.refreshTokens.values()) {
+      if (rec.id === id) rec.revokedAt = new Date();
+    }
+  }
+
+  async revokeAllRefreshTokens(userId: string): Promise<void> {
+    for (const rec of this.refreshTokens.values()) {
+      if (rec.userId === userId && rec.revokedAt === null) rec.revokedAt = new Date();
+    }
+  }
+
+  async deleteExpiredTokens(now: Date): Promise<number> {
+    let removed = 0;
+    for (const [hash, rec] of this.refreshTokens) {
+      if (rec.expiresAt <= now) {
+        this.refreshTokens.delete(hash);
+        removed += 1;
+      }
+    }
+    for (const [hash, rec] of this.resetTokens) {
+      if (rec.expiresAt <= now) {
+        this.resetTokens.delete(hash);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   async findUserByEmail(email: string): Promise<UserRecord | null> {
