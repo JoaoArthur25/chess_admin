@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../auth/middleware.js';
+import { makeRequireAuth } from '../auth/middleware.js';
 import { AuthError, type AuthService } from '../services/authService.js';
 import { DomainError, StateError, TournamentService } from '../services/tournamentService.js';
 
@@ -64,6 +64,12 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const forgotSchema = z.object({ email: z.string().email() });
+const resetSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+});
+
 /** Wrap async handlers so rejections reach the error middleware. */
 function h(fn: (req: Request, res: Response) => Promise<unknown>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -76,6 +82,7 @@ export function createApp(service: TournamentService, auth: AuthService): expres
   app.use(cors());
   app.use(express.json());
 
+  const requireAuth = makeRequireAuth(auth);
   const r = express.Router();
 
   r.get('/health', (_req, res) => res.json({ ok: true }));
@@ -95,6 +102,28 @@ export function createApp(service: TournamentService, auth: AuthService): expres
     h(async (req, res) => {
       const { email, password } = loginSchema.parse(req.body);
       res.json(await auth.login(email, password));
+    }),
+  );
+
+  r.post(
+    '/auth/forgot-password',
+    h(async (req, res) => {
+      const { email } = forgotSchema.parse(req.body);
+      await auth.requestPasswordReset(email);
+      // Always the same answer, registered or not — anything else would let a
+      // caller probe which e-mails have accounts.
+      res.status(202).json({
+        message: 'If that e-mail has an account, a reset link has been sent.',
+      });
+    }),
+  );
+
+  r.post(
+    '/auth/reset-password',
+    h(async (req, res) => {
+      const { token, password } = resetSchema.parse(req.body);
+      await auth.resetPassword(token, password);
+      res.json({ message: 'Password updated. You can sign in now.' });
     }),
   );
 

@@ -7,6 +7,7 @@ import TournamentList from './pages/TournamentList';
 import TournamentDetail from './pages/TournamentDetail';
 import PublicStandings from './pages/PublicStandings';
 import PrintView from './pages/PrintView';
+import ResetPassword from './pages/ResetPassword';
 
 const router = createBrowserRouter([
   {
@@ -17,6 +18,7 @@ const router = createBrowserRouter([
       { path: 't/:id', element: <TournamentDetail /> },
       { path: 'public/:id', element: <PublicStandings /> },
       { path: 'print/:id', element: <PrintView /> },
+      { path: 'reset-password', element: <ResetPassword /> },
     ],
   },
 ]);

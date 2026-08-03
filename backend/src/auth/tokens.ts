@@ -7,6 +7,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 export interface TokenPayload {
   sub: string; // user id
   email: string;
+  iat: number; // issued at, unix seconds — compared against passwordChangedAt
   exp: number; // unix seconds
 }
 
@@ -48,10 +49,12 @@ function sign(data: string, secret: string): Buffer {
 }
 
 export function createToken(user: { id: string; email: string }): string {
+  const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: user.id,
     email: user.email,
-    exp: Math.floor(Date.now() / 1000) + TTL_SECONDS,
+    iat: now,
+    exp: now + TTL_SECONDS,
   };
   const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
   const sig = b64url(sign(body, resolveSecret()));

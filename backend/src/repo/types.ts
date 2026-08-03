@@ -56,6 +56,15 @@ export interface UserRecord {
   email: string;
   name: string;
   passwordHash: string;
+  /** Sessions issued before this are refused. Bumped on every password change. */
+  passwordChangedAt: Date;
+}
+
+export interface ResetTokenRecord {
+  id: string;
+  userId: string;
+  expiresAt: Date;
+  usedAt: Date | null;
 }
 
 export interface CreateUserInput {
@@ -68,6 +77,17 @@ export interface UserRepository {
   createUser(input: CreateUserInput): Promise<UserRecord>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
   findUserById(id: string): Promise<UserRecord | null>;
+
+  /** Set a new password and bump passwordChangedAt, invalidating old sessions. */
+  updateUserPassword(userId: string, passwordHash: string): Promise<void>;
+
+  /** Store a reset token by its hash — the plaintext never reaches the database. */
+  createResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
+  /** Look a token up by hash. Returns it even when expired/used, so the caller decides. */
+  findResetToken(tokenHash: string): Promise<ResetTokenRecord | null>;
+  markResetTokenUsed(id: string): Promise<void>;
+  /** Invalidate every outstanding token for a user (after a successful reset). */
+  invalidateResetTokens(userId: string): Promise<void>;
 }
 
 export interface CreatePlayerInput {

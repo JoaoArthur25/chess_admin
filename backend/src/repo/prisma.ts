@@ -14,6 +14,7 @@ import type {
   CreateTournamentInput,
   CreateUserInput,
   NewPairing,
+  ResetTokenRecord,
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
@@ -25,6 +26,17 @@ import type {
 // domain enums, so mapping is a structural copy with narrowing casts.
 
 type PrismaPlayer = Awaited<ReturnType<typeof prisma.player.findFirstOrThrow>>;
+type PrismaUser = Awaited<ReturnType<typeof prisma.user.findFirstOrThrow>>;
+
+function mapUser(u: PrismaUser): UserRecord {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    passwordHash: u.passwordHash,
+    passwordChangedAt: u.passwordChangedAt,
+  };
+}
 
 function mapPlayer(p: PrismaPlayer): Player {
   return {
@@ -44,18 +56,41 @@ function mapPlayer(p: PrismaPlayer): Player {
 
 export class PrismaRepository implements TournamentRepository {
   async createUser(input: CreateUserInput): Promise<UserRecord> {
-    const u = await prisma.user.create({ data: input });
-    return { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash };
+    return mapUser(await prisma.user.create({ data: input }));
   }
 
   async findUserByEmail(email: string): Promise<UserRecord | null> {
     const u = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    return u ? { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash } : null;
+    return u ? mapUser(u) : null;
   }
 
   async findUserById(id: string): Promise<UserRecord | null> {
     const u = await prisma.user.findUnique({ where: { id } });
-    return u ? { id: u.id, email: u.email, name: u.name, passwordHash: u.passwordHash } : null;
+    return u ? mapUser(u) : null;
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, passwordChangedAt: new Date() },
+    });
+  }
+
+  async createResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    await prisma.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
+  }
+
+  async findResetToken(tokenHash: string): Promise<ResetTokenRecord | null> {
+    const t = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    return t ? { id: t.id, userId: t.userId, expiresAt: t.expiresAt, usedAt: t.usedAt } : null;
+  }
+
+  async markResetTokenUsed(id: string): Promise<void> {
+    await prisma.passwordResetToken.update({ where: { id }, data: { usedAt: new Date() } });
+  }
+
+  async invalidateResetTokens(userId: string): Promise<void> {
+    await prisma.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
   }
 
   async createTournament(input: CreateTournamentInput): Promise<Tournament> {

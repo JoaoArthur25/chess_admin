@@ -75,7 +75,29 @@ model User {
   name         String
   passwordHash String
   createdAt    DateTime @default(now())
+
+  // Sessions issued before this moment are refused. Bumped on every password
+  // change, so a reset actually locks out whoever knew the old password
+  // instead of leaving their session alive until it expires.
+  passwordChangedAt DateTime @default(now())
+
   tournaments  Tournament[]
+  resetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Only the HASH of the token is stored: a database leak must not let anyone
+  // reset an account. The plaintext exists solely in the e-mailed link.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime? // single use — set the moment it is redeemed
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Tournament {

@@ -94,6 +94,23 @@ to a non-owner.
 without it rather than falling back to a built-in default. In development a
 random per-process secret is used, so sessions reset when you restart.
 
+### Forgotten passwords
+
+*Forgot your password?* on the sign-in screen e-mails a single-use link valid
+for one hour. Only a SHA-256 hash of the token is stored, so a database leak
+does not let anyone reset an account, and the endpoint answers identically
+whether or not the address is registered so it cannot be used to discover which
+e-mails have accounts.
+
+Completing a reset **signs out every session opened before it** — otherwise
+resetting because someone got in would leave their session alive.
+
+**Without `SMTP_HOST`, the link is printed to the server log instead of being
+sent.** That is workable for a single arbiter running the app on a laptop, but
+it means anyone who can read the logs can take over any account: configure SMTP
+(`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) before other
+people have accounts. `APP_URL` must point at the frontend so the links work.
+
 ### Configuration
 
 Copy `backend/.env.example` to `backend/.env` and fill it in. Generate a secret
@@ -298,8 +315,11 @@ before running an officially rated event.
 - **Simulation scale is modest.** The black-box tests cover dozens of
   tournaments; FIDE's endorsement process uses thousands. The harness is in
   place to scale up.
-- **Sessions cannot be revoked.** Tokens last 12 hours and sign-out is
-  client-side only — there is no revocation list or silent refresh.
+- **Sessions are only revoked by a password change.** Tokens last 12 hours and
+  sign-out is client-side; a password reset invalidates earlier sessions, but
+  there is no general revocation list or silent refresh.
+- **No rate limiting.** Nothing throttles repeated sign-in or password-reset
+  attempts, which matters once the app is reachable from the internet.
 - **Manual pairing is swap-only.** The arbiter can rearrange players across
   boards but cannot yet assign a bye by hand or flip colours directly.
 - **The rating report has never been through a real submission.** The header

@@ -5,6 +5,7 @@ import type {
   CreateTournamentInput,
   CreateUserInput,
   NewPairing,
+  ResetTokenRecord,
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
@@ -29,6 +30,8 @@ interface StoredRound {
 
 export class InMemoryRepository implements TournamentRepository {
   private users = new Map<string, UserRecord>();
+  /** keyed by token HASH — the plaintext is never stored */
+  private resetTokens = new Map<string, ResetTokenRecord>();
   private tournaments = new Map<string, Tournament>();
   private players = new Map<string, Player & { tournamentId: string }>();
   private rounds = new Map<string, StoredRound>();
@@ -36,9 +39,42 @@ export class InMemoryRepository implements TournamentRepository {
 
   async createUser(input: CreateUserInput): Promise<UserRecord> {
     const id = randomUUID();
-    const user: UserRecord = { id, ...input };
+    const user: UserRecord = { id, ...input, passwordChangedAt: new Date() };
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    const u = this.users.get(userId);
+    if (u) {
+      u.passwordHash = passwordHash;
+      u.passwordChangedAt = new Date();
+    }
+  }
+
+  async createResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    this.resetTokens.set(tokenHash, {
+      id: randomUUID(),
+      userId,
+      expiresAt,
+      usedAt: null,
+    });
+  }
+
+  async findResetToken(tokenHash: string): Promise<ResetTokenRecord | null> {
+    return this.resetTokens.get(tokenHash) ?? null;
+  }
+
+  async markResetTokenUsed(id: string): Promise<void> {
+    for (const rec of this.resetTokens.values()) {
+      if (rec.id === id) rec.usedAt = new Date();
+    }
+  }
+
+  async invalidateResetTokens(userId: string): Promise<void> {
+    for (const [hash, rec] of this.resetTokens) {
+      if (rec.userId === userId && rec.usedAt === null) this.resetTokens.delete(hash);
+    }
   }
 
   async findUserByEmail(email: string): Promise<UserRecord | null> {
