@@ -155,6 +155,16 @@ function RoundBlock({
             {done}/{r.pairings.length} results · {r.status}
           </span>
         </button>
+        {open && (
+          <a
+            href={`/print/${tournamentId}?round=${r.index}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+          >
+            Print board list
+          </a>
+        )}
         {open && canEdit && !editing && (
           <button
             onClick={onEdit}

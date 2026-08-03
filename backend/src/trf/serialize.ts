@@ -76,11 +76,20 @@ export function serializePlayer(p: TrfPlayer): string {
 
 export function serializeTournament(t: TrfTournament): string {
   const lines: string[] = [];
+  // Header lines, in the order the FIDE rating report expects. Optional ones
+  // are omitted when empty rather than emitted blank — a blank administrative
+  // field is worse than an absent one for the federation's importer.
   lines.push(`012 ${t.name}`);
   if (t.city) lines.push(`022 ${t.city}`);
   if (t.federation) lines.push(`032 ${t.federation}`);
   if (t.startDate) lines.push(`042 ${t.startDate}`);
+  if (t.endDate) lines.push(`052 ${t.endDate}`);
   lines.push(`062 ${t.players.length}`);
+  lines.push(`072 ${t.ratedPlayers}`);
+  if (t.tournamentType) lines.push(`092 ${t.tournamentType}`);
+  if (t.chiefArbiter) lines.push(`102 ${t.chiefArbiter}`);
+  if (t.deputyArbiters) lines.push(`112 ${t.deputyArbiters}`);
+  if (t.timeControl) lines.push(`122 ${t.timeControl}`);
 
   // Engine config lines.
   lines.push(`XXR ${t.numberOfRounds}`);

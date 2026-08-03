@@ -1,5 +1,6 @@
 import { getToken } from './auth';
 import type {
+  ReportReadiness,
   PairingResult,
   Player,
   PlayerStatus,
@@ -91,6 +92,9 @@ export const api = {
       `/tournaments/${id}/rounds/${roundId}/pairings`,
       { method: 'PUT', body: JSON.stringify({ pairings, acknowledgeWarnings }) },
     ),
+
+  reportReadiness: (id: string) =>
+    req<ReportReadiness>(`/tournaments/${id}/report-readiness`),
 
   standings: (id: string) => req<StandingRow[]>(`/tournaments/${id}/standings`),
   matrix: (id: string) => req<{ ranks: number[]; cells: (number | null)[][] }>(`/tournaments/${id}/matrix`),

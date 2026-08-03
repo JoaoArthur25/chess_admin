@@ -66,6 +66,12 @@ export function parseTournament(text: string): TrfTournament {
   let city = '';
   let federation = '';
   let startDate = '';
+  let endDate = '';
+  let ratedPlayers = 0;
+  let tournamentType = '';
+  let chiefArbiter = '';
+  let deputyArbiters = '';
+  let timeControl = '';
   let numberOfRounds = 0;
   let firstBoardColor: 'white' | 'black' = 'white';
   const acceleration = new Map<number, number[]>();
@@ -88,6 +94,24 @@ export function parseTournament(text: string): TrfTournament {
         break;
       case '042':
         startDate = raw.slice(3).trim();
+        break;
+      case '052':
+        endDate = raw.slice(3).trim();
+        break;
+      case '072':
+        ratedPlayers = parseInt(raw.slice(3).trim(), 10) || 0;
+        break;
+      case '092':
+        tournamentType = raw.slice(3).trim();
+        break;
+      case '102':
+        chiefArbiter = raw.slice(3).trim();
+        break;
+      case '112':
+        deputyArbiters = raw.slice(3).trim();
+        break;
+      case '122':
+        timeControl = raw.slice(3).trim();
         break;
       case 'XXR':
         numberOfRounds = parseInt(raw.slice(3).trim(), 10) || 0;
@@ -123,6 +147,12 @@ export function parseTournament(text: string): TrfTournament {
     city,
     federation,
     startDate,
+    endDate,
+    ratedPlayers,
+    tournamentType,
+    chiefArbiter,
+    deputyArbiters,
+    timeControl,
     numberOfRounds,
     firstBoardColor,
     players,

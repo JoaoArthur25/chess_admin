@@ -47,7 +47,24 @@ export interface Round {
   pairings: Pairing[];
 }
 
-export interface Tournament {
+/** Administrative data required by the FIDE rating report (TRF header lines). */
+export interface TournamentAdmin {
+  city: string | null;
+  federation: string | null;
+  endDate: string | null;
+  tournamentType: string | null;
+  chiefArbiter: string | null;
+  deputyArbiters: string | null;
+  timeControl: string | null;
+}
+
+export interface ReportReadiness {
+  ready: boolean;
+  finished: boolean;
+  missing: string[];
+}
+
+export interface Tournament extends TournamentAdmin {
   id: string;
   name: string;
   date: string;

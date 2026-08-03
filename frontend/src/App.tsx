@@ -10,7 +10,9 @@ import { Spinner } from './components/ui';
 function Gate() {
   const { user, loading } = useAuth();
   const { pathname } = useLocation();
-  const isPublic = pathname.startsWith('/public/');
+  // Public: spectators check standings, and the arbiter prints board lists from
+  // whatever device is at hand — neither should require an account.
+  const isPublic = pathname.startsWith('/public/') || pathname.startsWith('/print/');
 
   if (isPublic) return <Outlet />;
   if (loading) return <Spinner label="Checking your session…" />;

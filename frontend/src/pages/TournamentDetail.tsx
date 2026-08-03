@@ -7,8 +7,9 @@ import PlayersPanel from '../components/PlayersPanel';
 import RoundsPanel from '../components/RoundsPanel';
 import StandingsPanel from '../components/StandingsPanel';
 import MatrixPanel from '../components/MatrixPanel';
+import SettingsPanel from '../components/SettingsPanel';
 
-type Tab = 'players' | 'rounds' | 'standings' | 'matrix';
+type Tab = 'players' | 'rounds' | 'standings' | 'matrix' | 'settings';
 
 export default function TournamentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,7 @@ export default function TournamentDetail() {
     { key: 'rounds', label: `Rounds (${t.rounds.length}/${t.numberOfRounds})` },
     { key: 'standings', label: 'Standings' },
     { key: 'matrix', label: 'Matrix' },
+    { key: 'settings', label: 'Details' },
   ];
 
   return (
@@ -109,10 +111,16 @@ export default function TournamentDetail() {
           </Button>
         )}
         <a
-          href={`/api/tournaments/${t.id}/trf`}
+          href={`/print/${t.id}?view=standings`}
           target="_blank"
           rel="noreferrer"
           className="text-sm text-slate-600 hover:text-slate-900 underline ml-auto"
+        >
+          Print standings
+        </a>
+        <a
+          href={`/api/tournaments/${t.id}/trf`}
+          className="text-sm text-slate-600 hover:text-slate-900 underline"
         >
           Export TRF(x)
         </a>
@@ -144,6 +152,7 @@ export default function TournamentDetail() {
       {tab === 'rounds' && <RoundsPanel tournament={t} onChange={reload} />}
       {tab === 'standings' && <StandingsPanel tournament={t} />}
       {tab === 'matrix' && <MatrixPanel tournament={t} />}
+      {tab === 'settings' && <SettingsPanel tournament={t} onChange={reload} />}
     </div>
   );
 }

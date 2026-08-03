@@ -19,7 +19,7 @@ import {
   StateError,
 } from '../domain/stateMachine.js';
 import type { PairingResult, Round, Tournament } from '../domain/types.js';
-import { tournamentToTrf } from '../trf/fromDomain.js';
+import { missingReportFields, tournamentToTrf } from '../trf/fromDomain.js';
 import { serializeTournament } from '../trf/serialize.js';
 import type {
   CreatePlayerInput,
@@ -27,6 +27,7 @@ import type {
   NewPairing,
   TournamentRepository,
   UpdatePlayerInput,
+  UpdateTournamentInput,
 } from '../repo/types.js';
 
 export class DomainError extends Error {
@@ -94,7 +95,7 @@ export class TournamentService {
     return this.load(id);
   }
 
-  async updateTournament(id: string, patch: Parameters<TournamentRepository['updateTournament']>[1]) {
+  async updateTournament(id: string, patch: UpdateTournamentInput) {
     const t = await this.load(id);
     if (t.state !== 'DRAFT' && (patch.numberOfRounds != null || patch.date != null)) {
       throw new DomainError('Cannot change rounds/date after the tournament has started');
@@ -427,6 +428,20 @@ export class TournamentService {
 
   async exportTrf(id: string) {
     return serializeTournament(tournamentToTrf(await this.load(id)));
+  }
+
+  /**
+   * Whether the event carries everything the FIDE rating report needs. Advisory
+   * only — the arbiter can always export, they just see what is still missing.
+   */
+  async reportReadiness(id: string) {
+    const t = await this.load(id);
+    const missing = missingReportFields(t);
+    return {
+      ready: missing.length === 0 && t.state === 'FINISHED',
+      finished: t.state === 'FINISHED',
+      missing,
+    };
   }
 
   async checkTournament(id: string) {

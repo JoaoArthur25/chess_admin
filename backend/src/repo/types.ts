@@ -32,6 +32,25 @@ export interface CreateTournamentInput {
   ownerId?: string | null;
 }
 
+/** Fields an arbiter may edit after creation (admin data + basic settings). */
+export type UpdateTournamentInput = Partial<
+  Pick<
+    Tournament,
+    | 'name'
+    | 'numberOfRounds'
+    | 'tieBreaks'
+    | 'lateEntryPoints'
+    | 'date'
+    | 'city'
+    | 'federation'
+    | 'endDate'
+    | 'tournamentType'
+    | 'chiefArbiter'
+    | 'deputyArbiters'
+    | 'timeControl'
+  >
+>;
+
 export interface UserRecord {
   id: string;
   email: string;
@@ -78,10 +97,7 @@ export interface TournamentRepository extends UserRepository {
   /** List tournaments; when ownerId is given, only that owner's events. */
   listTournaments(ownerId?: string): Promise<TournamentSummary[]>;
   getTournament(id: string): Promise<Tournament | null>;
-  updateTournament(
-    id: string,
-    patch: Partial<Pick<Tournament, 'name' | 'numberOfRounds' | 'tieBreaks' | 'lateEntryPoints' | 'date'>>,
-  ): Promise<void>;
+  updateTournament(id: string, patch: UpdateTournamentInput): Promise<void>;
   setTournamentState(id: string, state: TournamentState, currentRound: number): Promise<void>;
   deleteTournament(id: string): Promise<void>;
 

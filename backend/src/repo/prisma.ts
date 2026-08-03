@@ -17,6 +17,7 @@ import type {
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
+  UpdateTournamentInput,
   UserRecord,
 } from './types.js';
 
@@ -100,6 +101,13 @@ export class PrismaRepository implements TournamentRepository {
     return {
       id: t.id,
       ownerId: t.ownerId,
+      city: t.city,
+      federation: t.federation,
+      endDate: t.endDate,
+      tournamentType: t.tournamentType,
+      chiefArbiter: t.chiefArbiter,
+      deputyArbiters: t.deputyArbiters,
+      timeControl: t.timeControl,
       name: t.name,
       date: t.date,
       numberOfRounds: t.numberOfRounds,
@@ -127,10 +135,7 @@ export class PrismaRepository implements TournamentRepository {
     };
   }
 
-  async updateTournament(
-    id: string,
-    patch: Partial<Pick<Tournament, 'name' | 'numberOfRounds' | 'tieBreaks' | 'lateEntryPoints' | 'date'>>,
-  ): Promise<void> {
+  async updateTournament(id: string, patch: UpdateTournamentInput): Promise<void> {
     await prisma.tournament.update({ where: { id }, data: patch });
   }
 

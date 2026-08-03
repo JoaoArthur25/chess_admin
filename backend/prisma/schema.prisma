@@ -86,6 +86,17 @@ model Tournament {
   currentRound   Int             @default(0)
   state          TournamentState @default(DRAFT)
 
+  // Administrative data required by the FIDE rating report (TRF header lines).
+  // Optional here because a club event can run without them; the export flags
+  // what is missing rather than blocking.
+  city           String? //  022
+  federation     String? //  032 — 3-letter FIDE country code
+  endDate        DateTime? // 052
+  tournamentType String? //  092 — e.g. "Individual: Swiss-System"
+  chiefArbiter   String? //  102
+  deputyArbiters String? //  112
+  timeControl    String? //  122 — e.g. "90 min + 30 sec/move"
+
   // Ordered list of tie-break system codes (see domain/tiebreaks.ts).
   tieBreaks      String[]        @default([])
 

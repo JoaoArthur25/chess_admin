@@ -47,6 +47,13 @@ export function makeTournament(overrides: Partial<Tournament> = {}): Tournament 
   return {
     id: overrides.id ?? 't1',
     ownerId: overrides.ownerId ?? null,
+    city: overrides.city ?? null,
+    federation: overrides.federation ?? null,
+    endDate: overrides.endDate ?? null,
+    tournamentType: overrides.tournamentType ?? null,
+    chiefArbiter: overrides.chiefArbiter ?? null,
+    deputyArbiters: overrides.deputyArbiters ?? null,
+    timeControl: overrides.timeControl ?? null,
     name: overrides.name ?? 'Test Open',
     date: overrides.date ?? new Date('2026-02-01T00:00:00Z'),
     numberOfRounds: overrides.numberOfRounds ?? 5,

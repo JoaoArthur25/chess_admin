@@ -155,6 +155,26 @@ cd backend && npm run seed
 
 That prints the credentials to sign in with (`demo@chess-admin.local`).
 
+### Backup and restore
+
+Take a backup before and after each event. Writing through stdout avoids any
+path translation issues on Windows shells:
+
+```bash
+docker exec chess-admin-db pg_dump -U chess -d chess_admin -Fc > backup.dump
+```
+
+Restore into a fresh database:
+
+```bash
+docker exec -i chess-admin-db pg_restore -U chess -d chess_admin --clean < backup.dump
+```
+
+**Rehearse the restore before you rely on it.** A backup you have never
+restored is a guess, not a backup — restore into a scratch database
+(`CREATE DATABASE restore_test OWNER chess;`) and confirm the tournaments and
+player counts are what you expect.
+
 ### The real FIDE engine
 
 Build `bbpPairings` (see below), then in `backend/.env`:
@@ -207,6 +227,21 @@ the not-yet-played graph after 3 rounds can be two disjoint triangles — a
 rematch. The engine exits 1 and we surface **409**, never a crash. That path is
 covered by a test.
 
+## Running a tournament in the hall
+
+**Printable sheets.** Every round has a *Print board list* link, and the header
+has *Print standings*. Both open a plain black-on-white sheet at `/print/:id`
+with a Print button; the app chrome is hidden by the print stylesheet. These
+pages are **public**, so you can print from any device at the venue without
+signing in.
+
+**FIDE rating report.** The *Details* tab collects the administrative data the
+federation needs — city, federation, end date, tournament type, chief arbiter,
+deputy arbiters and time control. It shows a readiness banner listing whatever
+is still missing. The fields are optional: a club event runs and exports fine
+without them, and nothing is ever blocked over them. *Export TRF(x)* downloads
+the report; when the data is complete it carries header lines `012`–`122`.
+
 ## Manual pairing (arbiter override)
 
 The engine owns automatic pairing. When an arbiter must override it, open a
@@ -241,6 +276,10 @@ before running an officially rated event.
   client-side only — there is no revocation list or silent refresh.
 - **Manual pairing is swap-only.** The arbiter can rearrange players across
   boards but cannot yet assign a bye by hand or flip colours directly.
+- **The rating report is not machine-validated against FIDE.** The header lines
+  are emitted per the TRF spec and the file is accepted by the pairing engine,
+  but it has not been submitted to a federation nor checked by FIDE's own
+  importer.
 - **Acceleration is unused.** The serializer supports `XXA` lines and the schema
   reserves a field, but nothing drives it (only relevant for large events).
 - **No production infrastructure.** No CI/CD, hosting, HTTPS or backup routine.

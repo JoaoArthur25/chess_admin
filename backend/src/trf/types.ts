@@ -27,10 +27,16 @@ export interface TrfPlayer {
 }
 
 export interface TrfTournament {
-  name: string;
-  city: string;
-  federation: string;
-  startDate: string; // 'YYYY/MM/DD'
+  name: string; //          012
+  city: string; //          022
+  federation: string; //    032
+  startDate: string; //     042 — 'YYYY/MM/DD'
+  endDate: string; //       052
+  ratedPlayers: number; //  072
+  tournamentType: string; //092
+  chiefArbiter: string; //  102
+  deputyArbiters: string; //112
+  timeControl: string; //   122
   numberOfRounds: number;
   /** Color of the player on board 1 in round 1: 'white' or 'black'. */
   firstBoardColor: 'white' | 'black';

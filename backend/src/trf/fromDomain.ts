@@ -99,13 +99,36 @@ export function tournamentToTrf(t: Tournament): TrfTournament {
 
   return {
     name: t.name,
-    city: '',
-    federation: '',
+    city: t.city ?? '',
+    federation: t.federation ?? '',
     startDate: toTrfDate(t.date),
+    endDate: t.endDate ? toTrfDate(t.endDate) : '',
+    // 072 counts players carrying a rating, which is what the federation rates.
+    ratedPlayers: trfPlayers.filter((p) => p.rating > 0).length,
+    tournamentType: t.tournamentType ?? '',
+    chiefArbiter: t.chiefArbiter ?? '',
+    deputyArbiters: t.deputyArbiters ?? '',
+    timeControl: t.timeControl ?? '',
     numberOfRounds: t.numberOfRounds,
     firstBoardColor: 'white',
     players: trfPlayers,
   };
+}
+
+/**
+ * Administrative fields the FIDE rating report requires but that are optional
+ * for a club event. Reported to the arbiter so they can complete the entry
+ * before submitting — we never block the export over them.
+ */
+export function missingReportFields(t: Tournament): string[] {
+  const missing: string[] = [];
+  if (!t.city) missing.push('City (022)');
+  if (!t.federation) missing.push('Federation (032)');
+  if (!t.endDate) missing.push('End date (052)');
+  if (!t.tournamentType) missing.push('Tournament type (092)');
+  if (!t.chiefArbiter) missing.push('Chief arbiter (102)');
+  if (!t.timeControl) missing.push('Time control (122)');
+  return missing;
 }
 
 function toTrfDate(d: Date): string {

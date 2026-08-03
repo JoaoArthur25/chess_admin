@@ -28,6 +28,19 @@ const createTournamentSchema = z.object({
   lateEntryPoints: z.number().min(0).max(1).optional(),
 });
 
+/** Administrative data for the FIDE rating report. All optional. */
+const adminSchema = z.object({
+  city: z.string().max(60).nullable().optional(),
+  federation: z.string().max(3).nullable().optional(),
+  endDate: z.coerce.date().nullable().optional(),
+  tournamentType: z.string().max(80).nullable().optional(),
+  chiefArbiter: z.string().max(80).nullable().optional(),
+  deputyArbiters: z.string().max(200).nullable().optional(),
+  timeControl: z.string().max(80).nullable().optional(),
+});
+
+const updateTournamentSchema = createTournamentSchema.partial().merge(adminSchema);
+
 const playerSchema = z.object({
   fullName: z.string().min(1),
   sex: z.enum(['M', 'F']),
@@ -111,8 +124,18 @@ export function createApp(service: TournamentService, auth: AuthService): expres
   r.get(
     '/tournaments/:id/trf',
     h(async (req, res) => {
-      res.type('text/plain').send(await service.exportTrf(req.params.id!));
+      const trf = await service.exportTrf(req.params.id!);
+      // Offered as a download so the arbiter gets a file to submit, not a page.
+      res
+        .type('text/plain')
+        .set('Content-Disposition', `attachment; filename="tournament-${req.params.id}.trf"`)
+        .send(trf);
     }),
+  );
+
+  r.get(
+    '/tournaments/:id/report-readiness',
+    h(async (req, res) => res.json(await service.reportReadiness(req.params.id!))),
   );
 
   // ── Arbiter-only ────────────────────────────────────────────────────────
@@ -145,7 +168,7 @@ export function createApp(service: TournamentService, auth: AuthService): expres
   r.patch(
     '/tournaments/:id',
     h(async (req, res) => {
-      const patch = createTournamentSchema.partial().parse(req.body);
+      const patch = updateTournamentSchema.parse(req.body);
       res.json(await service.updateTournament(req.params.id!, patch));
     }),
   );

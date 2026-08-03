@@ -8,6 +8,7 @@ import type {
   TournamentRepository,
   TournamentSummary,
   UpdatePlayerInput,
+  UpdateTournamentInput,
   UserRecord,
 } from './types.js';
 
@@ -54,6 +55,13 @@ export class InMemoryRepository implements TournamentRepository {
     const t: Tournament = {
       id,
       ownerId: input.ownerId ?? null,
+      city: null,
+      federation: null,
+      endDate: null,
+      tournamentType: null,
+      chiefArbiter: null,
+      deputyArbiters: null,
+      timeControl: null,
       name: input.name,
       date: input.date ?? new Date(),
       numberOfRounds: input.numberOfRounds,
@@ -112,7 +120,7 @@ export class InMemoryRepository implements TournamentRepository {
     return { ...t, players, rounds };
   }
 
-  async updateTournament(id: string, patch: Partial<Tournament>): Promise<void> {
+  async updateTournament(id: string, patch: UpdateTournamentInput): Promise<void> {
     const t = this.tournaments.get(id);
     if (t) Object.assign(t, patch);
   }

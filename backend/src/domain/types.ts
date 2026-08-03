@@ -69,7 +69,22 @@ export interface Round {
   pairings: Pairing[];
 }
 
-export interface Tournament {
+/**
+ * Administrative data the FIDE rating report needs (TRF header lines). All
+ * optional: a club event runs fine without them, and the export reports what is
+ * missing instead of refusing.
+ */
+export interface TournamentAdmin {
+  city: string | null;
+  federation: string | null;
+  endDate: Date | null;
+  tournamentType: string | null;
+  chiefArbiter: string | null;
+  deputyArbiters: string | null;
+  timeControl: string | null;
+}
+
+export interface Tournament extends TournamentAdmin {
   id: string;
   /** Arbiter who owns this event. Null for legacy/unowned data. */
   ownerId: string | null;
