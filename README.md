@@ -242,6 +242,32 @@ is still missing. The fields are optional: a club event runs and exports fine
 without them, and nothing is ever blocked over them. *Export TRF(x)* downloads
 the report; when the data is complete it carries header lines `012`–`122`.
 
+### Submitting for rating
+
+An arbiter does **not** upload to FIDE directly. The chief arbiter hands the TRF
+to the **Rating Officer of the federation** where the event took place, and that
+officer uploads it to the FIDE Rating Server. There is therefore no public FIDE
+importer you can test a file against — the closest equivalent is asking your
+federation's Rating Officer to look at a sample, which they do routinely.
+
+Two things worth knowing before running a rated event:
+
+- **The deadline is strict.** The report must arrive in time for the rating list
+  the tournament was registered for. If it misses the third list after the event
+  ends, it is not rated at all.
+- **The Rating Officer can reject the event** (Rating Regulations art. 9.1) if it
+  does not meet the required standards.
+
+**Format: we target TRF16 on purpose.** TRF16 is accepted by every federation;
+TRF25 (2025) is newer and federations must be asked before it is used. TRF25
+mostly adds team-tournament support and in-tournament data exchange, and
+standardises as `142`/`152` what are still the `XXR`/`XXC` extension lines here —
+none of which affects an individual Swiss event. Moving to TRF25 is a deliberate
+future choice, not a gap.
+
+To sanity-check an export without involving the federation, open it in
+Swiss-Manager, Vega, a TRF editor, or upload it to chess-results.
+
 ## Manual pairing (arbiter override)
 
 The engine owns automatic pairing. When an arbiter must override it, open a
@@ -264,9 +290,9 @@ before running an officially rated event.
   source and identifies itself as a *non-release build*. For a rated tournament,
   pin a published release of bbpPairings.
 - **TRF export has not been read by a third-party tool.** It is validated
-  against the pairing engine, which is strong, but not against Swiss-Manager or
-  Vega, nor against official FIDE sample tournaments; the exact edition (TRF16
-  vs TRF25) is not formally confirmed. This is the largest conformance gap.
+  against the pairing engine, which is strong, but not against Swiss-Manager,
+  Vega or a federation's own tooling. This is the largest conformance gap — see
+  *Submitting for rating* above for how to close it.
 - **The Prisma adapter has no automated tests.** It has been exercised end to
   end by hand, but the queries themselves lack integration tests.
 - **Simulation scale is modest.** The black-box tests cover dozens of
@@ -276,10 +302,9 @@ before running an officially rated event.
   client-side only — there is no revocation list or silent refresh.
 - **Manual pairing is swap-only.** The arbiter can rearrange players across
   boards but cannot yet assign a bye by hand or flip colours directly.
-- **The rating report is not machine-validated against FIDE.** The header lines
-  are emitted per the TRF spec and the file is accepted by the pairing engine,
-  but it has not been submitted to a federation nor checked by FIDE's own
-  importer.
+- **The rating report has never been through a real submission.** The header
+  lines follow the TRF16 spec and the file is accepted by the pairing engine,
+  but no federation Rating Officer has yet processed one.
 - **Acceleration is unused.** The serializer supports `XXA` lines and the schema
   reserves a field, but nothing drives it (only relevant for large events).
 - **No production infrastructure.** No CI/CD, hosting, HTTPS or backup routine.
