@@ -81,8 +81,26 @@ model User {
   // instead of leaving their session alive until it expires.
   passwordChangedAt DateTime @default(now())
 
-  tournaments  Tournament[]
-  resetTokens  PasswordResetToken[]
+  tournaments   Tournament[]
+  resetTokens   PasswordResetToken[]
+  refreshTokens RefreshToken[]
+}
+
+// Long-lived session token, delivered to the browser as an httpOnly cookie so
+// JavaScript — and therefore any XSS — cannot read it. Rotated on every use.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Only the hash is stored, as with password-reset tokens.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model PasswordResetToken {

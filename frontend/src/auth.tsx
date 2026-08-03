@@ -9,26 +9,43 @@ export interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, name: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
-const STORAGE_KEY = 'chess-admin.token';
+/** Key used by the old localStorage scheme; cleared on boot. */
+const LEGACY_KEY = 'chess-admin.token';
+
 const AuthContext = createContext<AuthState | null>(null);
 
-/** Read the current token outside React (used by the API client). */
-export function getToken(): string | null {
-  return localStorage.getItem(STORAGE_KEY);
+// ── Access token: memory only ───────────────────────────────────────────────
+// Deliberately a module variable and never persisted. Anything in
+// localStorage/sessionStorage is readable by any injected script; the refresh
+// token lives in an httpOnly cookie the browser will not hand to JavaScript.
+
+let accessToken: string | null = null;
+
+export function getAccessToken(): string | null {
+  return accessToken;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+interface SessionResponse {
+  accessToken: string;
+  user: User;
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    credentials: 'include', // carries the refresh cookie
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
@@ -40,63 +57,108 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+// ── Refresh, with a queue so concurrent 401s cause one round trip ───────────
+
+let refreshInFlight: Promise<SessionResponse | null> | null = null;
+
+/**
+ * Ask the server for a new access token using the refresh cookie.
+ *
+ * EVERY refresh must go through here. The server rotates the token on each use
+ * and treats a replayed one as theft, so two concurrent calls would revoke the
+ * whole session. Concurrent callers therefore share a single request, and all
+ * settle together so no promise is left hanging on failure.
+ */
+export function refreshSession(): Promise<SessionResponse | null> {
+  refreshInFlight ??= (async () => {
+    try {
+      const data = await post<SessionResponse>('/auth/refresh');
+      setAccessToken(data.accessToken);
+      return data;
+    } catch {
+      setAccessToken(null);
+      return null;
+    } finally {
+      // Cleared after the microtask so everyone awaiting this attempt shares it.
+      queueMicrotask(() => {
+        refreshInFlight = null;
+      });
+    }
+  })();
+  return refreshInFlight;
+}
+
+/** Convenience for the HTTP client: just the new access token, or null. */
+export async function refreshAccessToken(): Promise<string | null> {
+  return (await refreshSession())?.accessToken ?? null;
+}
+
+/** Called when the session is gone, so the UI can drop back to the login screen. */
+let onSessionLost: (() => void) | null = null;
+export function notifySessionLost(): void {
+  onSessionLost?.();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => getToken());
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Validate a stored token on boot; drop it if the server rejects it.
+  // Boot: drop any token left by the old localStorage scheme, then try to
+  // restore the session from the cookie. Without this the user would be
+  // bounced to the login screen on every reload.
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
+    try {
+      localStorage.removeItem(LEGACY_KEY);
+    } catch {
+      // storage may be unavailable (private mode); nothing to clean up then
     }
+
     let alive = true;
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('invalid session'))))
-      .then((u: User) => alive && setUser(u))
-      .catch(() => {
+    // Must go through the shared path: StrictMode runs this effect twice in
+    // development, and two refreshes would replay the rotated token and look
+    // like a stolen session to the server.
+    refreshSession()
+      .then((data) => {
         if (!alive) return;
-        localStorage.removeItem(STORAGE_KEY);
-        setToken(null);
-        setUser(null);
+        setUser(data?.user ?? null);
       })
       .finally(() => alive && setLoading(false));
+
+    onSessionLost = () => {
+      setAccessToken(null);
+      setUser(null);
+    };
     return () => {
       alive = false;
+      onSessionLost = null;
     };
-  }, [token]);
-
-  const accept = useCallback((res: { token: string; user: User }) => {
-    localStorage.setItem(STORAGE_KEY, res.token);
-    setToken(res.token);
-    setUser(res.user);
   }, []);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      accept(await post('/auth/login', { email, password }));
-    },
-    [accept],
-  );
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await post<SessionResponse>('/auth/login', { email, password });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+  }, []);
 
-  const register = useCallback(
-    async (email: string, name: string, password: string) => {
-      accept(await post('/auth/register', { email, name, password }));
-    },
-    [accept],
-  );
+  const register = useCallback(async (email: string, name: string, password: string) => {
+    const data = await post<SessionResponse>('/auth/register', { email, name, password });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+  }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setToken(null);
+  const logout = useCallback(async () => {
+    try {
+      await post('/auth/logout');
+    } catch {
+      // Even if the call fails, drop the local session.
+    }
+    setAccessToken(null);
     setUser(null);
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, token, loading, login, register, logout }),
-    [user, token, loading, login, register, logout],
+    () => ({ user, loading, login, register, logout }),
+    [user, loading, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

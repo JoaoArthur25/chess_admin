@@ -14,6 +14,7 @@ import type {
   CreateTournamentInput,
   CreateUserInput,
   NewPairing,
+  RefreshTokenRecord,
   ResetTokenRecord,
   TournamentRepository,
   TournamentSummary,
@@ -91,6 +92,36 @@ export class PrismaRepository implements TournamentRepository {
 
   async invalidateResetTokens(userId: string): Promise<void> {
     await prisma.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
+  }
+
+  async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    await prisma.refreshToken.create({ data: { userId, tokenHash, expiresAt } });
+  }
+
+  async findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
+    const t = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+    return t
+      ? { id: t.id, userId: t.userId, expiresAt: t.expiresAt, revokedAt: t.revokedAt }
+      : null;
+  }
+
+  async revokeRefreshToken(id: string): Promise<void> {
+    await prisma.refreshToken.update({ where: { id }, data: { revokedAt: new Date() } });
+  }
+
+  async revokeAllRefreshTokens(userId: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  async deleteExpiredTokens(now: Date): Promise<number> {
+    const [refresh, reset] = await prisma.$transaction([
+      prisma.refreshToken.deleteMany({ where: { expiresAt: { lte: now } } }),
+      prisma.passwordResetToken.deleteMany({ where: { expiresAt: { lte: now } } }),
+    ]);
+    return refresh.count + reset.count;
   }
 
   async createTournament(input: CreateTournamentInput): Promise<Tournament> {

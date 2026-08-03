@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { createToken, type TokenPayload } from '../auth/tokens.js';
+import { refreshTokenTtlDays } from '../config.js';
 import type { Mailer } from '../mail/port.js';
 import type { UserRepository } from '../repo/types.js';
 
@@ -21,19 +22,27 @@ export interface PublicUser {
 }
 
 export interface AuthResult {
-  token: string;
+  /** Short-lived; the browser keeps this in memory only. */
+  accessToken: string;
+  /**
+   * Long-lived. The caller must put this in an httpOnly cookie and MUST NOT
+   * return it in a response body — the browser is never allowed to read it.
+   */
+  refreshToken: string;
   user: PublicUser;
 }
 
 const MIN_PASSWORD_LENGTH = 8;
 const RESET_TTL_MINUTES = 60;
+/** Window in which replaying a rotated token is treated as a race, not theft. */
+const REUSE_GRACE_MS = 15_000;
 
 /**
- * Reset tokens are high-entropy random values; only their SHA-256 hash is
- * stored. A plain hash (not scrypt) is right here: the token already has 256
- * bits of entropy, so it is not brute-forceable and needs no slow KDF.
+ * Reset and refresh tokens are high-entropy random values; only their SHA-256
+ * hash is stored. A plain hash (not scrypt) is right here: the token already
+ * has 256 bits of entropy, so it is not brute-forceable and needs no slow KDF.
  */
-function hashResetToken(token: string): string {
+function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
@@ -58,7 +67,7 @@ export class AuthService {
       name: name.trim(),
       passwordHash: await hashPassword(password),
     });
-    return { token: createToken(user), user: toPublic(user) };
+    return this.issueSession(user);
   }
 
   async login(email: string, password: string): Promise<AuthResult> {
@@ -73,7 +82,65 @@ export class AuthService {
     }
     if (!(await verifyPassword(password, user.passwordHash))) throw invalid;
 
-    return { token: createToken(user), user: toPublic(user) };
+    return this.issueSession(user);
+  }
+
+  /** Mint an access token plus a fresh refresh token, storing only its hash. */
+  private async issueSession(user: {
+    id: string;
+    email: string;
+    name: string;
+  }): Promise<AuthResult> {
+    const refreshToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + refreshTokenTtlDays * 24 * 60 * 60 * 1000);
+    await this.repo.createRefreshToken(user.id, hashToken(refreshToken), expiresAt);
+    return { accessToken: createToken(user), refreshToken, user: toPublic(user) };
+  }
+
+  /**
+   * Exchange a refresh token for a new pair, rotating it: the presented token is
+   * revoked and a new one issued.
+   *
+   * Presenting an ALREADY REVOKED token means either a replay or a stolen
+   * cookie being used in parallel with the legitimate one. We cannot tell which,
+   * so we revoke every session for that account — the safe reading.
+   */
+  async refreshSession(refreshToken: string): Promise<AuthResult> {
+    const invalid = new AuthError('Session expired');
+
+    const record = await this.repo.findRefreshToken(hashToken(refreshToken));
+    if (!record) throw invalid;
+
+    if (record.revokedAt !== null) {
+      // Reuse of a rotated token is the classic stolen-cookie signal, and the
+      // safe response is to burn every session for the account.
+      //
+      // But a benign race produces the same shape: two tabs, or a retried
+      // request, refreshing within moments of each other. Nuking a legitimate
+      // arbiter mid-tournament over that is its own harm, so reuse within a
+      // short window is rejected WITHOUT the global revocation. Beyond it,
+      // replay is not plausibly a race and we assume theft.
+      const sinceRevoked = Date.now() - record.revokedAt.getTime();
+      if (sinceRevoked > REUSE_GRACE_MS) {
+        await this.repo.revokeAllRefreshTokens(record.userId);
+      }
+      throw invalid;
+    }
+    if (record.expiresAt.getTime() <= Date.now()) throw invalid;
+
+    const user = await this.repo.findUserById(record.userId);
+    if (!user) throw invalid;
+
+    await this.repo.revokeRefreshToken(record.id);
+    return this.issueSession(user);
+  }
+
+  /** Revoke a single session (sign out on this device). */
+  async revokeSession(refreshToken: string): Promise<void> {
+    const record = await this.repo.findRefreshToken(hashToken(refreshToken));
+    if (record && record.revokedAt === null) {
+      await this.repo.revokeRefreshToken(record.id);
+    }
   }
 
   async me(userId: string): Promise<PublicUser> {
@@ -107,7 +174,7 @@ export class AuthService {
     // 256 bits of entropy; the plaintext exists only in the e-mailed link.
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60_000);
-    await this.repo.createResetToken(user.id, hashResetToken(token), expiresAt);
+    await this.repo.createResetToken(user.id, hashToken(token), expiresAt);
 
     const link = `${this.appUrl}/reset-password?token=${token}`;
     await this.mailer?.send({
@@ -136,7 +203,7 @@ export class AuthService {
     // about which tokens exist.
     const invalid = new AuthError('This reset link is invalid or has expired', 400);
 
-    const record = await this.repo.findResetToken(hashResetToken(token));
+    const record = await this.repo.findResetToken(hashToken(token));
     if (!record) throw invalid;
     if (record.usedAt !== null) throw invalid;
     if (record.expiresAt.getTime() <= Date.now()) throw invalid;
@@ -145,6 +212,8 @@ export class AuthService {
     await this.repo.markResetTokenUsed(record.id);
     // Any other outstanding token for this account is now moot.
     await this.repo.invalidateResetTokens(record.userId);
+    // And every open session dies with the old password.
+    await this.repo.revokeAllRefreshTokens(record.userId);
   }
 }
 

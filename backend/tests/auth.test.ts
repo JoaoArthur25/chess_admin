@@ -55,7 +55,7 @@ async function registerArbiter(email: string): Promise<string> {
     body: { email, name: 'Arbiter', password: 'correct-horse-battery' },
   });
   expect(res.status).toBe(201);
-  return res.body.token as string;
+  return res.body.accessToken as string;
 }
 
 describe('password hashing', () => {
@@ -121,7 +121,7 @@ describe('auth endpoints', () => {
       body: { email: 'arbiter@club.org', password: 'correct-horse-battery' },
     });
     expect(login.status).toBe(200);
-    expect(login.body.token).toBeTruthy();
+    expect(login.body.accessToken).toBeTruthy();
   });
 
   it('never returns the password hash', async () => {

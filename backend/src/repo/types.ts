@@ -67,6 +67,13 @@ export interface ResetTokenRecord {
   usedAt: Date | null;
 }
 
+export interface RefreshTokenRecord {
+  id: string;
+  userId: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+}
+
 export interface CreateUserInput {
   email: string;
   name: string;
@@ -88,6 +95,15 @@ export interface UserRepository {
   markResetTokenUsed(id: string): Promise<void>;
   /** Invalidate every outstanding token for a user (after a successful reset). */
   invalidateResetTokens(userId: string): Promise<void>;
+
+  // ── Refresh tokens (httpOnly cookie sessions) ──────────────────────────
+  createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
+  findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  revokeRefreshToken(id: string): Promise<void>;
+  /** Revoke every session for a user — logout-everywhere and theft response. */
+  revokeAllRefreshTokens(userId: string): Promise<void>;
+  /** Housekeeping: drop rows that can no longer authenticate anything. */
+  deleteExpiredTokens(now: Date): Promise<number>;
 }
 
 export interface CreatePlayerInput {
