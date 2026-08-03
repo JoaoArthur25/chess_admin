@@ -104,14 +104,17 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 The file is read by `src/loadEnv.ts`, imported first in the entrypoint. On boot
-the server prints the repository and engine it resolved — **check that line**,
-because a `.env` that is present but not being read is easy to miss:
+the server prints the repository and engine it resolved:
 
 ```
 Chess Admin API listening on http://localhost:4000
-  repository: prisma
-  engine:     bbp
+  repository: memory     <- or "prisma"
+  engine:     fake       <- or "bbp"
 ```
+
+**Check that line against what you configured.** A `.env` that is present but
+not being read is easy to miss, and the app keeps working — just with the
+in-memory store and the fake engine instead of what you asked for.
 
 ## Running with PostgreSQL (data survives restarts)
 
