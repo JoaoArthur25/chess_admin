@@ -1,6 +1,4 @@
-import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type EngineCheckResult,
@@ -11,18 +9,13 @@ import {
   NoValidPairingError,
   type PairingEngine,
 } from './port.js';
+import { describeExitCode, runProcess, withTempDir } from './process.js';
 
 export interface BbpOptions {
   /** Path to the bbpPairings binary. Defaults to env PAIRING_ENGINE_PATH. */
   binaryPath?: string;
   /** Timeout in ms before the engine process is killed. */
   timeoutMs?: number;
-}
-
-interface SpawnResult {
-  code: number;
-  stdout: string;
-  stderr: string;
 }
 
 /**
@@ -41,7 +34,7 @@ export class BbpPairingsEngine implements PairingEngine {
   }
 
   async pairNextRound(trf: string): Promise<EnginePairingResult> {
-    return this.withTempDir(async (dir) => {
+    return withTempDir(async (dir) => {
       const input = join(dir, 'input.trf');
       const output = join(dir, 'output.txt');
       await writeFile(input, trf, 'utf8');
@@ -56,7 +49,7 @@ export class BbpPairingsEngine implements PairingEngine {
       }
       if (res.code !== 0) {
         throw new EngineError(
-          `bbpPairings exited with code ${res.code}`,
+          `bbpPairings failed: ${describeExitCode(res.code)}`,
           res.code,
           res.stderr,
         );
@@ -68,7 +61,7 @@ export class BbpPairingsEngine implements PairingEngine {
   }
 
   async checkTournament(trf: string): Promise<EngineCheckResult> {
-    return this.withTempDir(async (dir) => {
+    return withTempDir(async (dir) => {
       const input = join(dir, 'input.trf');
       const checklist = join(dir, 'checklist.txt');
       await writeFile(input, trf, 'utf8');
@@ -78,7 +71,7 @@ export class BbpPairingsEngine implements PairingEngine {
 
       if (res.code !== 0 && res.code !== 1) {
         throw new EngineError(
-          `bbpPairings check exited with code ${res.code}`,
+          `bbpPairings check failed: ${describeExitCode(res.code)}`,
           res.code,
           res.stderr,
         );
@@ -127,46 +120,14 @@ export class BbpPairingsEngine implements PairingEngine {
     };
   }
 
-  private async withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
-    const dir = await mkdtemp(join(tmpdir(), 'chess-admin-'));
-    try {
-      return await fn(dir);
-    } finally {
-      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-    }
-  }
-
-  private run(args: string[]): Promise<SpawnResult> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.binaryPath, args, { windowsHide: true });
-      let stdout = '';
-      let stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new EngineError(`bbpPairings timed out after ${this.timeoutMs}ms`));
-      }, this.timeoutMs);
-
-      child.stdout.on('data', (d) => (stdout += d.toString()));
-      child.stderr.on('data', (d) => (stderr += d.toString()));
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        const e = err as NodeJS.ErrnoException;
-        if (e.code === 'ENOENT') {
-          reject(
-            new EngineError(
-              `Pairing engine binary not found at "${this.binaryPath}". ` +
-                `Set PAIRING_ENGINE_PATH to the bbpPairings executable.`,
-            ),
-          );
-        } else {
-          reject(new EngineError(`Failed to spawn bbpPairings: ${e.message}`));
-        }
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        resolve({ code: code ?? -1, stdout, stderr });
-      });
-    });
+  private run(args: string[]) {
+    return runProcess(
+      this.binaryPath,
+      args,
+      this.timeoutMs,
+      `Pairing engine binary not found at "${this.binaryPath}". ` +
+        `Set PAIRING_ENGINE_PATH to the bbpPairings executable.`,
+    );
   }
 }
 

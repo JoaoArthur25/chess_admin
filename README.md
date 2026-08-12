@@ -65,7 +65,7 @@ another one.
 ### Tests & typecheck
 
 ```bash
-cd backend && npm test        # 102 tests: TRF round-trip, engine adapters, rules,
+cd backend && npm test        # 106 tests: TRF round-trip, engine adapters, rules,
                               # state machine, tie-breaks, auth, sessions, lifecycle
 cd backend && npm run typecheck
 cd frontend && npm run typecheck
@@ -265,6 +265,43 @@ v6.0.0 (2026-02-01) is the release carrying the 2025 Dutch rules, effective the
 same date. Running the binary with no arguments prints the version — the app
 reads that banner and reports it with every conformity check.
 
+### Cross-validation against JaVaFo
+
+C.04.2 requires that different approved programs arrive at **identical**
+pairings. Satisfying the FIDE invariants (no rematches, colour rules, byes) is a
+weaker claim than matching what a reference implementation produces, so a second
+endorsed engine is wired in purely to check that stronger claim.
+
+```bash
+mkdir -p /c/Trabalhos-Dev/javafo
+curl -o /c/Trabalhos-Dev/javafo/javafo.jar http://www.rrweb.org/javafo/current/javafo.jar
+# then set JAVAFO_PATH; a JRE is required
+```
+
+`tests/crossValidation.test.ts` plays whole tournaments, pairing every round
+with both engines and comparing board by board. It skips unless both are
+installed. JaVaFo can also drive the app directly (`PAIRING_ENGINE=javafo`).
+
+**Result, and the caveat that matters.** On **even fields the two agree on every
+board of every round** — verified across five full events (8 to 16 players).
+That is what validates *our* side: the TRF we emit, the history we model, the
+output we parse. A mismatch there would mean a bug in this codebase.
+
+On **odd fields they diverge at the pairing-allocated bye**, because they
+implement **different editions of the Dutch rules**:
+
+| Engine | Build | Rules edition |
+|--------|-------|---------------|
+| bbpPairings | v6.0.0 (2026-02-01) | 2025 Dutch rules |
+| JaVaFo | 2.2 (circa 2018) | preceding edition |
+
+`rrweb.org/javafo/current` still serves 2.2, so there is no JaVaFo build on the
+2025 rules. The consequence is worth stating plainly: **cross-validation with
+JaVaFo cannot confirm conformance to the 2026 bye rule** — only that everything
+else lines up. The test asserts the divergence is confined to the bye and fails
+loudly if the engines ever agree on the bye and still differ elsewhere, which
+would point back at us.
+
 Then set `PAIRING_ENGINE=bbp` and `PAIRING_ENGINE_PATH=<abs path>/bbpPairings.exe`.
 Keep the engine **outside** this repository — it is a separate program with its
 own license, and that separation is what keeps the two works independent.
@@ -359,12 +396,10 @@ same players. The backend re-validates every change and
 Documented honestly — none of these compromise the architecture, but they matter
 before running an officially rated event.
 
-- **Reproducibility has not been verified.** C.04.2 requires that different
-  arbiters or approved programs arrive at *identical* pairings. Our black-box
-  tests confirm the output satisfies the FIDE invariants (no rematches, colour
-  rules, byes) — which is a weaker claim than matching what the reference
-  program would produce for the same input. Cross-checking a full tournament
-  against Swiss-Manager, Vega or JaVaFo is the decisive outstanding test.
+- **Reproducibility is verified only on even fields.** Cross-validation against
+  JaVaFo matches board for board across full events with no bye, but the two
+  engines follow different editions of the Dutch rules, so odd fields cannot be
+  compared. See *Cross-validation* above.
 - **Chess Admin is not an endorsed program.** It delegates to one, but FIDE
   endorses programs, not wrappers; it does not appear in C.04 Annex 3.
 - **TRF export has not been read by a third-party tool.** It is validated
