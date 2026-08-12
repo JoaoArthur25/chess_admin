@@ -259,6 +259,11 @@ export function createApp(service: TournamentService, auth: AuthService): expres
   );
 
   r.get(
+    '/engine',
+    h(async (_req, res) => res.json(await service.describeEngine())),
+  );
+
+  r.get(
     '/tournaments/:id/report-readiness',
     h(async (req, res) => res.json(await service.reportReadiness(req.params.id!))),
   );

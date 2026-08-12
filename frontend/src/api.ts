@@ -1,5 +1,6 @@
 import { getAccessToken, notifySessionLost, refreshAccessToken } from './auth';
 import type {
+  ConformityCheck,
   ReportReadiness,
   PairingResult,
   Player,
@@ -108,6 +109,8 @@ export const api = {
       `/tournaments/${id}/rounds/${roundId}/pairings`,
       { method: 'PUT', body: JSON.stringify({ pairings, acknowledgeWarnings }) },
     ),
+
+  checkTournament: (id: string) => req<ConformityCheck>(`/tournaments/${id}/check`),
 
   reportReadiness: (id: string) =>
     req<ReportReadiness>(`/tournaments/${id}/report-readiness`),

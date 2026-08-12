@@ -57,4 +57,21 @@ export interface PairingEngine {
   pairNextRound(trf: string): Promise<EnginePairingResult>;
   /** Check an entire completed tournament for rule discrepancies. */
   checkTournament(trf: string): Promise<EngineCheckResult>;
+  /**
+   * Human-readable identification of the engine actually in use.
+   *
+   * FIDE endorses specific programs, so an arbiter must be able to state which
+   * build produced the pairings — and a self-compiled snapshot is not the same
+   * as a published release.
+   */
+  describe(): Promise<EngineIdentity>;
+}
+
+export interface EngineIdentity {
+  /** e.g. "bbpPairings", "fake". */
+  name: string;
+  /** Raw banner from the binary, or a fixed string for the fake. */
+  version: string;
+  /** True only for an identifiable, published release of an endorsed engine. */
+  isEndorsedRelease: boolean;
 }

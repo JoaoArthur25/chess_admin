@@ -3,6 +3,7 @@ import { pointsForCode } from '../trf/codes.js';
 import type { TrfPlayer } from '../trf/types.js';
 import {
   type EngineCheckResult,
+  type EngineIdentity,
   type EnginePairing,
   type EnginePairingResult,
   NoValidPairingError,
@@ -168,6 +169,14 @@ export class FakePairingEngine implements PairingEngine {
       const [white, black] = assignColors(a, b);
       pairings.push({ white, black, boardNumber: nextBoard() });
     }
+  }
+
+  async describe(): Promise<EngineIdentity> {
+    return {
+      name: 'fake',
+      version: 'FakePairingEngine (development only — NOT FIDE endorsed)',
+      isEndorsedRelease: false,
+    };
   }
 
   async checkTournament(trf: string): Promise<EngineCheckResult> {

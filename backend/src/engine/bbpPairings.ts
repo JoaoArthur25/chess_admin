@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   type EngineCheckResult,
   type EnginePairing,
+  type EngineIdentity,
   type EnginePairingResult,
   EngineError,
   NoValidPairingError,
@@ -96,6 +97,34 @@ export class BbpPairingsEngine implements PairingEngine {
         rawOutput: raw,
       };
     });
+  }
+
+  /**
+   * Identify the binary in use. Invoked with no arguments, bbpPairings prints a
+   * banner naming its version; a build made from a working tree says
+   * "non-release build" instead of a tag, which is exactly the distinction an
+   * arbiter needs before running a rated event.
+   */
+  async describe(): Promise<EngineIdentity> {
+    let banner = '';
+    try {
+      const res = await this.run([]);
+      banner = (res.stdout || res.stderr).split(/\r?\n/)[0]?.trim() ?? '';
+    } catch (err) {
+      return {
+        name: 'bbpPairings',
+        version: err instanceof EngineError ? `unavailable (${err.message})` : 'unavailable',
+        isEndorsedRelease: false,
+      };
+    }
+
+    // A published release identifies itself as "- vX.Y.Z (Built ...)".
+    const release = /-\s*v(\d+\.\d+\.\d+)/.exec(banner);
+    return {
+      name: 'bbpPairings',
+      version: banner || 'unknown',
+      isEndorsedRelease: release !== null,
+    };
   }
 
   private async withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {

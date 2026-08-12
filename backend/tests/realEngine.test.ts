@@ -201,3 +201,29 @@ describe.skipIf(!HAS_ENGINE)('real bbpPairings engine (black-box)', () => {
     expect(check.ok).toBe(true);
   });
 });
+
+describe.skipIf(!HAS_ENGINE)('engine identity', () => {
+  it('reports a published release, not a working-tree build', async () => {
+    const svc = service();
+    const id = (await svc.createTournament({ name: 'Ident', numberOfRounds: 1 })).id;
+    const engine = await svc.describeEngine();
+
+    expect(engine.name).toBe('bbpPairings');
+    // A rated event needs a build that can be named by version. A snapshot
+    // compiled from a working tree says "non-release build" instead.
+    expect(engine.version, engine.version).toMatch(/v\d+\.\d+\.\d+/);
+    expect(engine.isEndorsedRelease).toBe(true);
+    void id;
+  });
+
+  it('carries the engine identity with the conformity check', async () => {
+    const { svc, tournamentId } = await runTournament(8, 3, 55);
+    const check = await svc.checkTournament(tournamentId);
+
+    expect(check.engine.isEndorsedRelease).toBe(true);
+    expect(check.finished).toBe(true);
+    expect(check.roundsPlayed).toBe(3);
+    expect(check.discrepancies, JSON.stringify(check.discrepancies)).toHaveLength(0);
+    expect(check.ok).toBe(true);
+  });
+});

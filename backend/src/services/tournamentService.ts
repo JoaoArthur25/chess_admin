@@ -444,8 +444,32 @@ export class TournamentService {
     };
   }
 
+  /**
+   * Run the engine's pairing-checker over the whole event.
+   *
+   * C.04.2 requires an endorsed system to ship a checker able to verify
+   * tournaments run with it; this is that checker. The engine's identity travels
+   * with the result because an arbiter must be able to state which build
+   * produced the pairings — a self-compiled snapshot is not a published release.
+   */
   async checkTournament(id: string) {
-    return this.engine.checkTournament(await this.exportTrf(id));
+    const t = await this.load(id);
+    const [result, engine] = await Promise.all([
+      this.engine.checkTournament(serializeTournament(tournamentToTrf(t))),
+      this.engine.describe(),
+    ]);
+    return {
+      ...result,
+      engine,
+      finished: t.state === 'FINISHED',
+      roundsPlayed: t.rounds.length,
+      roundsScheduled: t.numberOfRounds,
+    };
+  }
+
+  /** Which engine is in use — surfaced so the arbiter can record it. */
+  describeEngine() {
+    return this.engine.describe();
   }
 }
 

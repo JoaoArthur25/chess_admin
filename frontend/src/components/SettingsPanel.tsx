@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
 import type { ReportReadiness, Tournament } from '../types';
 import { Button, Card, ErrorNote } from './ui';
+import ConformityPanel from './ConformityPanel';
 
 const TYPES = [
   'Individual: Swiss-System',
@@ -131,6 +132,8 @@ export default function SettingsPanel({
           </p>
         </Card>
       )}
+
+      <ConformityPanel tournament={t} />
 
       <Card className="p-4">
         <h3 className="font-semibold mb-3">Tournament details (FIDE report)</h3>

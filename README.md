@@ -65,7 +65,7 @@ another one.
 ### Tests & typecheck
 
 ```bash
-cd backend && npm test        # 100 tests: TRF round-trip, engine adapters, rules,
+cd backend && npm test        # 102 tests: TRF round-trip, engine adapters, rules,
                               # state machine, tie-breaks, auth, sessions, lifecycle
 cd backend && npm run typecheck
 cd frontend && npm run typecheck
@@ -250,11 +250,20 @@ format (`<count>` then `<white> <black>` lines, `0` = bye) parses correctly.
 
 ### Building the engine (Windows / MSYS2)
 
+**Pin a published release.** A binary built from the working tree identifies
+itself as *non-release build* and cannot be named by version — unsuitable for a
+rated event, where the arbiter must be able to state which build produced the
+pairings. Check out the tag:
+
 ```bash
 pacman -S --needed --noconfirm mingw-w64-x86_64-gcc make git
 cd /c/Trabalhos-Dev && git clone https://github.com/BieremaBoyzProgramming/bbpPairings.git
-cd bbpPairings && make COMP=gcc     # produces bbpPairings.exe
+cd bbpPairings && git checkout v6.0.0 && make COMP=gcc
 ```
+
+v6.0.0 (2026-02-01) is the release carrying the 2025 Dutch rules, effective the
+same date. Running the binary with no arguments prints the version — the app
+reads that banner and reports it with every conformity check.
 
 Then set `PAIRING_ENGINE=bbp` and `PAIRING_ENGINE_PATH=<abs path>/bbpPairings.exe`.
 Keep the engine **outside** this repository — it is a separate program with its
@@ -315,6 +324,23 @@ future choice, not a gap.
 To sanity-check an export without involving the federation, open it in
 Swiss-Manager, Vega, a TRF editor, or upload it to chess-results.
 
+### FIDE conformity check
+
+C.04.2 expects an endorsed system to ship a checker able to verify tournaments
+run with it. The *Details* tab has a **Run check** button that feeds the whole
+event through the engine's own checker (`--dutch … -c`) and reports any
+discrepancy, along with the engine build that produced the pairings.
+
+Run it before submitting a report. A clean result means the engine found no rule
+violation in what it can verify — it is **not** a FIDE certification of this
+application, and does not replace the federation's review.
+
+**Chess Admin is not itself a FIDE-endorsed program.** The pairings come from an
+endorsed engine, which is a strong guarantee for the pairings themselves, but the
+layer around it — seeding, history, TRF serialisation — is ours, and that is
+exactly where our own bugs have been found. Reproducibility against another
+endorsed program has not yet been verified; see *Known limitations*.
+
 ## Manual pairing (arbiter override)
 
 The engine owns automatic pairing. When an arbiter must override it, open a
@@ -333,9 +359,14 @@ same players. The backend re-validates every change and
 Documented honestly — none of these compromise the architecture, but they matter
 before running an officially rated event.
 
-- **The local engine build is not an official release.** It is compiled from
-  source and identifies itself as a *non-release build*. For a rated tournament,
-  pin a published release of bbpPairings.
+- **Reproducibility has not been verified.** C.04.2 requires that different
+  arbiters or approved programs arrive at *identical* pairings. Our black-box
+  tests confirm the output satisfies the FIDE invariants (no rematches, colour
+  rules, byes) — which is a weaker claim than matching what the reference
+  program would produce for the same input. Cross-checking a full tournament
+  against Swiss-Manager, Vega or JaVaFo is the decisive outstanding test.
+- **Chess Admin is not an endorsed program.** It delegates to one, but FIDE
+  endorses programs, not wrappers; it does not appear in C.04 Annex 3.
 - **TRF export has not been read by a third-party tool.** It is validated
   against the pairing engine, which is strong, but not against Swiss-Manager,
   Vega or a federation's own tooling. This is the largest conformance gap — see

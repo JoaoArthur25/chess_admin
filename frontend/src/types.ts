@@ -58,6 +58,22 @@ export interface TournamentAdmin {
   timeControl: string | null;
 }
 
+export interface EngineIdentity {
+  name: string;
+  version: string;
+  isEndorsedRelease: boolean;
+}
+
+export interface ConformityCheck {
+  ok: boolean;
+  discrepancies: { message: string; roundIndex?: number }[];
+  rawOutput?: string;
+  engine: EngineIdentity;
+  finished: boolean;
+  roundsPlayed: number;
+  roundsScheduled: number;
+}
+
 export interface ReportReadiness {
   ready: boolean;
   finished: boolean;
